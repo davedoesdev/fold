@@ -1,0 +1,7 @@
+#!/bin/bash
+# generate a random locally-administered MAC address
+read -a bytes < <(od -N 6 /dev/urandom -A n -t u1 -v)
+let "bytes[0] &= 0xfc"
+let "bytes[0] |= 0x2"
+IFS=:
+echo "${bytes[*]}"
