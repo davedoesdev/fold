@@ -77,8 +77,10 @@ case "$COMMAND" in
 exit
         tap
 
-        # need to split up IPADDR to get IP and subnet. should really make
-        # bytes after mask zero
+# can we ping link local addresses? find out if switch should route them - as weave is an ethernet switch it probably shouldn't. even if we could, it means we couldn't restrict traffic based on prefix. so we should check we CAN'T ping local link addresses
+
+
+
         # setup packet filtering rules; can we group them to make removing easier?
 
         # write nfhdcp config file: should we allow template to be specified
