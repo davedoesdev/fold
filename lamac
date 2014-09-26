@@ -3,5 +3,8 @@
 read -a bytes < <(od -N 6 /dev/urandom -A n -t u1 -v)
 let "bytes[0] &= 0xfc"
 let "bytes[0] |= 0x2"
+for i in "${!bytes[@]}"; do
+    bytes[$i]=$(printf "%02x" "${bytes[$i]}")
+done
 IFS=:
 echo "${bytes[*]}"

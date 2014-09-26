@@ -4,10 +4,11 @@ set -e
 BRIDGE=weave
 TAP_IFNAME=vethfotp$$
 MTU=16384 # max TAP MTU
+NFDHCP_BINDING_OUT="/var/lib/nfdhcpd/$TAP_IFNAME"
 
 usage() {
     echo "Usage:"
-    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] <macaddr> kvm [<kvm args> ...]"
+    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-c <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
     exit 1
 }
 
@@ -16,7 +17,7 @@ usage() {
     exit 1
 }
 
-while getopts 4:6: opt
+while getopts 4:6:c: opt
 do
     case $opt in
         4)
@@ -24,6 +25,9 @@ do
             ;;
         6)
             PREFIX="$OPTARG"
+            ;;
+        c)
+            NFDHCP_BINDING_IN="$OPTARG"
             ;;
         *)
             usage
@@ -52,7 +56,11 @@ then
     SUBNET=$((ipnum >> 24 & 255)).$((ipnum >> 16 & 255)).$((ipnum >> 8 & 255)).$((ipnum & 255))/${ipsub[1]}
 fi
 
-exit
+untap() {
+    if ip link show dev "$TAP_IFNAME" >& /dev/null; then
+         ip link del dev "$TAP_IFNAME"
+    fi
+}
 
 tap() {
     ip tuntap add dev "$TAP_IFNAME" mode tap
@@ -60,44 +68,42 @@ tap() {
     ip link set dev "$TAP_IFNAME" up
 }
 
-untap() {
-    ip link del dev "$TAP_IFNAME"
+cleanup() {
+    untap
+    rm -f "$NFDHCP_BINDING_OUT"    
 }
 
+trap cleanup EXIT
 
+untap; tap
 
+if [ "$NFDHCP_BINDING_IN" ]; then
+    ( echo "MAC=$MACADDR"
+      [ "$IPADDR" ] && echo "IP=$IPADDR"
+      [ "$SUBNET" ] && echo "SUBNET=$SUBNET"
+      [ "$PREFIX" ] && echo "SUBNET6=$PREFIX"
+      cat "$NFDHCP_BINDING_IN" )  > "$NFDHCP_BINDING_OUT"
+fi
 
 case "$COMMAND" in
     kvm)
-        [ $# -gt 0 ] || usage
-        IPADDR="$1"
-        shift 1
-        MACADDR="$(mac)"
-        IP="$(ip "$IPADDR")"
-exit
-        tap
 
 # can we ping link local addresses? find out if switch should route them - as weave is an ethernet switch it probably shouldn't. even if we could, it means we couldn't restrict traffic based on prefix. so we should check we CAN'T ping local link addresses
-
-
+# neighbour solicitation address - do we need FORWARD and mangle rules for other direction? otherwise won't get through
 
         # setup packet filtering rules; can we group them to make removing easier?
 
-        # write nfhdcp config file: should we allow template to be specified
-        # and replace mac, ip address and subnet mask?
-        # what about ipv6 stuff? do we need to do anything?
 
         # run kvm
         # kvm -netdev bridge,id=hn0,br=weave -device virtio-net-pci,netdev=hn0,id=nic1,mac=52:54:00:12:34:56 -hda disk.qcow2 
         # use -netdev tap
 
         # then need to remove the rules
-        # and remove the config file
 
-        untap
         ;;
     *)
         echo "Unknown fold command '$COMMAND'" >&2
         usage
         ;;
 esac
+
