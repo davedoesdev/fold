@@ -1,0 +1,18 @@
+#!/bin/bash
+# make an EUI-64 address from a MAC-48 address
+if test $# -ne 1; then
+    echo "usage: $0 <mac-48>" 1>&2
+    exit 1
+fi
+mac="$(echo "$1" | tr -d : | tr A-Z a-z)"
+mac="$(echo "$mac" | head -c 6)fffe$(echo "$mac" | tail -c +7)"
+let "b = 0x$(echo "$mac" | head -c 2)"
+let "b ^= 2"
+printf "%02x" "$b"
+echo "$mac" | tail -c +3 | head -c 2
+echo -n :
+echo "$mac" | tail -c +5 | head -c 4
+echo -n :
+echo "$mac" | tail -c +9 | head -c 4
+echo -n :
+echo "$mac" | tail -c +13

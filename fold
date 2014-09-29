@@ -6,6 +6,7 @@ TAP_IFNAME=vethfotp$$
 NFDHCP_BINDING_OUT="/var/lib/nfdhcpd/$TAP_IFNAME"
 NFDHCP_CFG="/etc/nfdhcpd/nfdhcpd.conf"
 MTU=16384 # max TAP MTU
+HERE="$(dirname "$0")"
 
 usage() {
     echo "Usage:"
@@ -74,16 +75,33 @@ if [ "$IPSUB" ]; then
     SUBNET=$((ipnum >> 24 & 255)).$((ipnum >> 16 & 255)).$((ipnum >> 8 & 255)).$((ipnum & 255))/${ipsub[1]}
 fi
 
+if [ "$PREFIX" ]; then
+    # Assume guest uses EUI-64.
+    # For RFC-4941 (privacy extensions) we should use IP6ADDR="$PREFIX"
+    # For RFC-7217 (stable privacy addresses) we should use rdiscd-mkaddress
+    IP6ADDR="$(python -c "import socket, binascii, sys; sys.stdout.write(binascii.hexlify(socket.inet_pton(socket.AF_INET6, '$(echo "$PREFIX" | sed 's/\/.*//')'))[:16])" | sed 's/\(.\{4\}\)/\1:/g')$("$HERE"/eui-64 "$MACADDR")"
+fi
+
 unrule() {
     if iptables -t mangle -L "$TAP_IFNAME" >& /dev/null; then
     	iptables -t mangle -D PREROUTING -j "$TAP_IFNAME"
         iptables -t mangle -F "$TAP_IFNAME"
         iptables -t mangle -X "$TAP_IFNAME"
     fi
+    if iptables -L "$TAP_IFNAME" >& /dev/null; then
+        iptables -D FORWARD -j "$TAP_IFNAME"
+        iptables -F "$TAP_IFNAME"
+        iptables -X "$TAP_IFNAME"
+    fi
     if ip6tables -t mangle -L "$TAP_IFNAME" >& /dev/null; then
     	ip6tables -t mangle -D PREROUTING -j "$TAP_IFNAME"
         ip6tables -t mangle -F "$TAP_IFNAME"
         ip6tables -t mangle -X "$TAP_IFNAME"
+    fi
+    if ip6tables -L "$TAP_IFNAME" >& /dev/null; then
+        ip6tables -D FORWARD -j "$TAP_IFNAME"
+        ip6tables -F "$TAP_IFNAME"
+        ip6tables -X "$TAP_IFNAME"
     fi
     if ebtables -t nat -L "$TAP_IFNAME" >& /dev/null; then
         ebtables -t nat -D PREROUTING -j "$TAP_IFNAME"
@@ -100,6 +118,14 @@ rule() {
         iptables -t mangle -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS_QUEUE"
         #iptables -t mangle -L
 
+        iptables -N "$TAP_IFNAME"
+        iptables -A FORWARD -j "$TAP_IFNAME"
+        iptables -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -s "$IPADDR" -d "$SUBNET" -j ACCEPT
+        iptables -A "$TAP_IFNAME" -m physdev --physdev-out "$TAP_IFNAME" -s "$SUBNET" -d "$IPADDR" -j ACCEPT
+        iptables -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -j REJECT
+        iptables -A "$TAP_IFNAME" -m physdev --physdev-out "$TAP_IFNAME" -j REJECT
+        #iptables -L
+
         ebtables -t nat -N "$TAP_IFNAME"
         ebtables -t nat -A PREROUTING -j "$TAP_IFNAME"
         ebtables -t nat -A "$TAP_IFNAME" -p ARP -i "$TAP_IFNAME" --arp-ip-dst "$(config1 nameservers "$NFDHCP_BINDING_IN")" -j arpreply --arpreply-mac "$MACADDR"
@@ -113,6 +139,17 @@ rule() {
         ip6tables -t mangle -A "$TAP_IFNAME" -p ipv6-icmp -m physdev --physdev-in "$TAP_IFNAME" --icmpv6-type router-solicitation   -j NFQUEUE --queue-num "$RS_QUEUE"
         ip6tables -t mangle -A "$TAP_IFNAME" -p ipv6-icmp -m physdev --physdev-in "$TAP_IFNAME" --icmpv6-type neighbour-solicitation -j NFQUEUE --queue-num "$NS_QUEUE"
         #ip6tables -t mangle -L
+
+        ip6tables -N "$TAP_IFNAME"
+        ip6tables -A FORWARD -j "$TAP_IFNAME"
+        ip6tables -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -s "$IP6ADDR" -d "$PREFIX" -j ACCEPT
+        # Allow packets to solicited-node multicast addresses (for neighbour solicitation)
+        # nfdhcpd checks the request is for the allocated prefix
+        ip6tables -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -s "$IP6ADDR" -d ff02:0:0:0:0:1:ff00::/104 -j ACCEPT
+        ip6tables -A "$TAP_IFNAME" -m physdev --physdev-out "$TAP_IFNAME" -s "$PREFIX" -d "$IP6ADDR" -j ACCEPT
+        ip6tables -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -j REJECT
+        ip6tables -A "$TAP_IFNAME" -m physdev --physdev-out "$TAP_IFNAME" -j REJECT
+        ip6tables -L
     fi
 }
 
@@ -155,8 +192,9 @@ case "$COMMAND" in
 # stop notify messages (on that port) going in/out and test notification
 
         # setup isolation rules
+        # we should try to shorten/optimise these by funnelling interface related stuff through chain and then dropping at end of chain
 
-        kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "$@"
+        #kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "$@"
         ;;
     *)
         echo "Unknown fold command '$COMMAND'" >&2
