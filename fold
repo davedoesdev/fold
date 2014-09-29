@@ -3,12 +3,13 @@ set -e
 
 BRIDGE=weave
 TAP_IFNAME=vethfotp$$
-MTU=16384 # max TAP MTU
 NFDHCP_BINDING_OUT="/var/lib/nfdhcpd/$TAP_IFNAME"
+NFDHCP_CFG="/etc/nfdhcpd/nfdhcpd.conf"
+MTU=16384 # max TAP MTU
 
 usage() {
     echo "Usage:"
-    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-c <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
+    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
     exit 1
 }
 
@@ -17,7 +18,7 @@ usage() {
     exit 1
 }
 
-while getopts 4:6:c: opt
+while getopts 4:6: opt
 do
     case $opt in
         4)
@@ -25,9 +26,6 @@ do
             ;;
         6)
             PREFIX="$OPTARG"
-            ;;
-        c)
-            NFDHCP_BINDING_IN="$OPTARG"
             ;;
         *)
             usage
@@ -37,14 +35,34 @@ done
 
 shift $((OPTIND-1))
 
-[ $# -gt 1 ] || usage
+[ $# -gt 2 ] || usage
 
-MACADDR="$1"
-COMMAND="$2"
-shift 2
+NFDHCP_BINDING_IN="$1"
+MACADDR="$2"
+COMMAND="$3"
+shift 3
 
-if [ "$IPSUB" ]
-then
+trim() {
+    sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$@"
+}
+
+config() {
+    grep -i "^$1 *=" $2 | sed 's/^[^=]*=//' | sed 's/#.*$//' | trim
+}
+
+config1() {
+    config "$1" "$2" | sed 's/,.*$//' | trim
+}
+
+DHCP_QUEUE=$(config dhcp_queue "$NFDHCP_CFG")
+RS_QUEUE=$(config rs_queue "$NFDHCP_CFG")
+NS_QUEUE=$(config ns_queue "$NFDHCP_CFG")
+DNS_QUEUE=$(config dns_queue "$NFDHCP_CFG")
+DNS6_QUEUE=$(config dns6_queue "$NFDHCP_CFG")
+NOTIFY_QUEUE=$(config notify_queue "$NFDHCP_CFG")
+NOTIFY6_QUEUE=$(config notify6_queue "$NFDHCP_CFG")
+
+if [ "$IPSUB" ]; then
     # extract the IP address from an ipaddr/subnet spec
     IFS=/ read -a ipsub <<< "$IPSUB"
     IPADDR="${ipsub[0]}"
@@ -56,6 +74,48 @@ then
     SUBNET=$((ipnum >> 24 & 255)).$((ipnum >> 16 & 255)).$((ipnum >> 8 & 255)).$((ipnum & 255))/${ipsub[1]}
 fi
 
+unrule() {
+    if iptables -t mangle -L "$TAP_IFNAME" >& /dev/null; then
+    	iptables -t mangle -D PREROUTING -j "$TAP_IFNAME"
+        iptables -t mangle -F "$TAP_IFNAME"
+        iptables -t mangle -X "$TAP_IFNAME"
+    fi
+    if ip6tables -t mangle -L "$TAP_IFNAME" >& /dev/null; then
+    	ip6tables -t mangle -D PREROUTING -j "$TAP_IFNAME"
+        ip6tables -t mangle -F "$TAP_IFNAME"
+        ip6tables -t mangle -X "$TAP_IFNAME"
+    fi
+    if ebtables -t nat -L "$TAP_IFNAME" >& /dev/null; then
+        ebtables -t nat -D PREROUTING -j "$TAP_IFNAME"
+        ebtables -t nat -F "$TAP_IFNAME"
+        ebtables -t nat -X "$TAP_IFNAME"
+    fi
+}
+
+rule() {
+    if [ "$IPSUB" ]; then
+        iptables -t mangle -N "$TAP_IFNAME"
+        iptables -t mangle -A PREROUTING -j "$TAP_IFNAME"
+        iptables -t mangle -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -p udp --dport bootps -j NFQUEUE --queue-num "$DHCP_QUEUE"
+        iptables -t mangle -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS_QUEUE"
+        #iptables -t mangle -L
+
+        ebtables -t nat -N "$TAP_IFNAME"
+        ebtables -t nat -A PREROUTING -j "$TAP_IFNAME"
+        ebtables -t nat -A "$TAP_IFNAME" -p ARP -i "$TAP_IFNAME" --arp-ip-dst "$(config1 nameservers "$NFDHCP_BINDING_IN")" -j arpreply --arpreply-mac "$MACADDR"
+        #ebtables -t nat -L
+    fi
+
+    if [ "$PREFIX" ]; then
+        ip6tables -t mangle -N "$TAP_IFNAME"
+        ip6tables -t mangle -A PREROUTING -j "$TAP_IFNAME"
+        ip6tables -t mangle -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS6_QUEUE"
+        ip6tables -t mangle -A "$TAP_IFNAME" -p ipv6-icmp -m physdev --physdev-in "$TAP_IFNAME" --icmpv6-type router-solicitation   -j NFQUEUE --queue-num "$RS_QUEUE"
+        ip6tables -t mangle -A "$TAP_IFNAME" -p ipv6-icmp -m physdev --physdev-in "$TAP_IFNAME" --icmpv6-type neighbour-solicitation -j NFQUEUE --queue-num "$NS_QUEUE"
+        #ip6tables -t mangle -L
+    fi
+}
+
 untap() {
     if ip link show dev "$TAP_IFNAME" >& /dev/null; then
          ip link del dev "$TAP_IFNAME"
@@ -64,42 +124,39 @@ untap() {
 
 tap() {
     ip tuntap add dev "$TAP_IFNAME" mode tap
+    ip link set dev "$TAP_IFNAME" mtu "$MTU"
     ip link set dev "$TAP_IFNAME" master "$BRIDGE"
     ip link set dev "$TAP_IFNAME" up
 }
 
 cleanup() {
-    untap
-    rm -f "$NFDHCP_BINDING_OUT"    
+    untap; unrule
+    rm -f "$NFDHCP_BINDING_OUT"
 }
 
 trap cleanup EXIT
 
+unrule; rule
 untap; tap
 
-if [ "$NFDHCP_BINDING_IN" ]; then
-    ( echo "MAC=$MACADDR"
-      [ "$IPADDR" ] && echo "IP=$IPADDR"
-      [ "$SUBNET" ] && echo "SUBNET=$SUBNET"
-      [ "$PREFIX" ] && echo "SUBNET6=$PREFIX"
-      cat "$NFDHCP_BINDING_IN" )  > "$NFDHCP_BINDING_OUT"
-fi
+( echo "MAC=$MACADDR"
+  [ "$IPADDR" ] && echo "IP=$IPADDR"
+  [ "$SUBNET" ] && echo "SUBNET=$SUBNET"
+  [ "$PREFIX" ] && echo "SUBNET6=$PREFIX"
+  echo "MTU=$MTU"
+  cat "$NFDHCP_BINDING_IN" )  > "$NFDHCP_BINDING_OUT"
 
 case "$COMMAND" in
     kvm)
 
 # can we ping link local addresses? find out if switch should route them - as weave is an ethernet switch it probably shouldn't. even if we could, it means we couldn't restrict traffic based on prefix. so we should check we CAN'T ping local link addresses
 # neighbour solicitation address - do we need FORWARD and mangle rules for other direction? otherwise won't get through
+# need rule to put notify messages on queue
+# stop notify messages (on that port) going in/out and test notification
 
-        # setup packet filtering rules; can we group them to make removing easier?
+        # setup isolation rules
 
-
-        # run kvm
-        # kvm -netdev bridge,id=hn0,br=weave -device virtio-net-pci,netdev=hn0,id=nic1,mac=52:54:00:12:34:56 -hda disk.qcow2 
-        # use -netdev tap
-
-        # then need to remove the rules
-
+        kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "$@"
         ;;
     *)
         echo "Unknown fold command '$COMMAND'" >&2
