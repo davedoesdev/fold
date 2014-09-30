@@ -83,73 +83,133 @@ if [ "$PREFIX" ]; then
 fi
 
 unrule() {
-    if iptables -t mangle -L "$TAP_IFNAME" >& /dev/null; then
-    	iptables -t mangle -D PREROUTING -j "$TAP_IFNAME"
-        iptables -t mangle -F "$TAP_IFNAME"
-        iptables -t mangle -X "$TAP_IFNAME"
+    if iptables -t mangle -L "in$TAP_IFNAME" >& /dev/null; then
+        iptables -t mangle -D PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -p udp -j "in$TAP_IFNAME"
+        iptables -t mangle -F "in$TAP_IFNAME"
+        iptables -t mangle -X "in$TAP_IFNAME"
     fi
-    if iptables -L "$TAP_IFNAME" >& /dev/null; then
-        iptables -D FORWARD -j "$TAP_IFNAME"
-        iptables -F "$TAP_IFNAME"
-        iptables -X "$TAP_IFNAME"
+    if iptables -L "in$TAP_IFNAME" >& /dev/null; then
+        iptables -D FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        iptables -F "in$TAP_IFNAME"
+        iptables -X "in$TAP_IFNAME"
     fi
-    if ip6tables -t mangle -L "$TAP_IFNAME" >& /dev/null; then
-    	ip6tables -t mangle -D PREROUTING -j "$TAP_IFNAME"
-        ip6tables -t mangle -F "$TAP_IFNAME"
-        ip6tables -t mangle -X "$TAP_IFNAME"
+    if iptables -L "out$TAP_IFNAME" >& /dev/null; then
+        iptables -D FORWARD -m physdev --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        iptables -F "out$TAP_IFNAME"
+        iptables -X "out$TAP_IFNAME"
     fi
-    if ip6tables -L "$TAP_IFNAME" >& /dev/null; then
-        ip6tables -D FORWARD -j "$TAP_IFNAME"
-        ip6tables -F "$TAP_IFNAME"
-        ip6tables -X "$TAP_IFNAME"
+    if ip6tables -t mangle -L "in$TAP_IFNAME" >& /dev/null; then
+        ip6tables -t mangle -D PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ip6tables -t mangle -F "in$TAP_IFNAME"
+        ip6tables -t mangle -X "in$TAP_IFNAME"
     fi
-    if ebtables -t nat -L "$TAP_IFNAME" >& /dev/null; then
-        ebtables -t nat -D PREROUTING -j "$TAP_IFNAME"
-        ebtables -t nat -F "$TAP_IFNAME"
-        ebtables -t nat -X "$TAP_IFNAME"
+    if ip6tables -L "in$TAP_IFNAME" >& /dev/null; then
+        ip6tables -D FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ip6tables -F "in$TAP_IFNAME"
+        ip6tables -X "in$TAP_IFNAME"
+    fi
+    if ip6tables -L "out$TAP_IFNAME" >& /dev/null; then
+        ip6tables -D FORWARD -m physdev --physdev-out "$TAP_IFNAME" -k "out$TAP_IFNAME"
+        ip6tables -F "out$TAP_IFNAME"
+        ip6tables -X "out$TAP_IFNAME"
+    fi
+    if ebtables -t nat -L "in$TAP_IFNAME" >& /dev/null; then
+        ebtables -t nat -D PREROUTING -p arp -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ebtables -t nat -F "in$TAP_IFNAME"
+        ebtables -t nat -X "in$TAP_IFNAME"
+    fi
+    if ebtables -L "in$TAP_IFNAME" >& /dev/null; then
+        ebtables -D FORWARD -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ebtables -F "in$TAP_IFNAME"
+        ebtables -X "in$TAP_IFNAME"
+    fi
+    if ebtables -L "out$TAP_IFNAME" >& /dev/null; then
+        ebtables -D FORWARD -o "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        ebtables -F "out$TAP_IFNAME"
+        ebtables -X "out$TAP_IFNAME"
     fi
 }
 
 rule() {
     if [ "$IPSUB" ]; then
-        iptables -t mangle -N "$TAP_IFNAME"
-        iptables -t mangle -A PREROUTING -j "$TAP_IFNAME"
-        iptables -t mangle -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -p udp --dport bootps -j NFQUEUE --queue-num "$DHCP_QUEUE"
-        iptables -t mangle -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS_QUEUE"
+        iptables -t mangle -N "in$TAP_IFNAME"
+        iptables -t mangle -A PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -p udp -j "in$TAP_IFNAME"
+        iptables -t mangle -A "in$TAP_IFNAME" --dport bootps -j NFQUEUE --queue-num "$DHCP_QUEUE"
+        iptables -t mangle -A "in$TAP_IFNAME" --dport domain -j NFQUEUE --queue-num "$DNS_QUEUE"
         #iptables -t mangle -L
 
-        iptables -N "$TAP_IFNAME"
-        iptables -A FORWARD -j "$TAP_IFNAME"
-        iptables -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -s "$IPADDR" -d "$SUBNET" -j ACCEPT
-        iptables -A "$TAP_IFNAME" -m physdev --physdev-out "$TAP_IFNAME" -s "$SUBNET" -d "$IPADDR" -j ACCEPT
-        iptables -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -j REJECT
-        iptables -A "$TAP_IFNAME" -m physdev --physdev-out "$TAP_IFNAME" -j REJECT
+        iptables -N "in$TAP_IFNAME"
+        iptables -A FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        iptables -A "in$TAP_IFNAME" -s "$IPADDR" -d "$SUBNET" -j ACCEPT
+        iptables -A "in$TAP_IFNAME" -j REJECT
+
+        iptables -N "out$TAP_IFNAME"
+        iptables -A FORWARD -m physdev --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$IPADDR" -j ACCEPT
+        iptables -A "out$TAP_IFNAME" -j REJECT
         #iptables -L
 
-        ebtables -t nat -N "$TAP_IFNAME"
-        ebtables -t nat -A PREROUTING -j "$TAP_IFNAME"
-        ebtables -t nat -A "$TAP_IFNAME" -p ARP -i "$TAP_IFNAME" --arp-ip-dst "$(config1 nameservers "$NFDHCP_BINDING_IN")" -j arpreply --arpreply-mac "$MACADDR"
+        ebtables -t nat -N "in$TAP_IFNAME" -P RETURN
+        ebtables -t nat -A PREROUTING -p arp -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ebtables -t nat -A "in$TAP_IFNAME" --arp-opcode request --arp-ip-dst "$(config1 nameservers "$NFDHCP_BINDING_IN")" -j arpreply --arpreply-mac "$MACADDR"
         #ebtables -t nat -L
     fi
 
     if [ "$PREFIX" ]; then
-        ip6tables -t mangle -N "$TAP_IFNAME"
-        ip6tables -t mangle -A PREROUTING -j "$TAP_IFNAME"
-        ip6tables -t mangle -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS6_QUEUE"
-        ip6tables -t mangle -A "$TAP_IFNAME" -p ipv6-icmp -m physdev --physdev-in "$TAP_IFNAME" --icmpv6-type router-solicitation   -j NFQUEUE --queue-num "$RS_QUEUE"
-        ip6tables -t mangle -A "$TAP_IFNAME" -p ipv6-icmp -m physdev --physdev-in "$TAP_IFNAME" --icmpv6-type neighbour-solicitation -j NFQUEUE --queue-num "$NS_QUEUE"
+        ip6tables -t mangle -N "in$TAP_IFNAME"
+        ip6tables -t mangle -A PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ip6tables -t mangle -A "$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS6_QUEUE"
+        ip6tables -t mangle -A "$TAP_IFNAME" -p ipv6-icmp --icmpv6-type router-solicitation -j NFQUEUE --queue-num "$RS_QUEUE"
+        ip6tables -t mangle -A "$TAP_IFNAME" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j NFQUEUE --queue-num "$NS_QUEUE"
         #ip6tables -t mangle -L
 
-        ip6tables -N "$TAP_IFNAME"
-        ip6tables -A FORWARD -j "$TAP_IFNAME"
-        ip6tables -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -s "$IP6ADDR" -d "$PREFIX" -j ACCEPT
+        ip6tables -N "in$TAP_IFNAME"
+        ip6tables -A FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$PREFIX" -j ACCEPT
         # Allow packets to solicited-node multicast addresses (for neighbour solicitation)
         # nfdhcpd checks the request is for the allocated prefix
-        ip6tables -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -s "$IP6ADDR" -d ff02:0:0:0:0:1:ff00::/104 -j ACCEPT
-        ip6tables -A "$TAP_IFNAME" -m physdev --physdev-out "$TAP_IFNAME" -s "$PREFIX" -d "$IP6ADDR" -j ACCEPT
-        ip6tables -A "$TAP_IFNAME" -m physdev --physdev-in "$TAP_IFNAME" -j REJECT
-        ip6tables -A "$TAP_IFNAME" -m physdev --physdev-out "$TAP_IFNAME" -j REJECT
-        ip6tables -L
+        ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d ff02:0:0:0:0:1:ff00::/104 -j ACCEPT
+        ip6tables -A "in$TAP_IFNAME" -j REJECT
+
+        ip6tables -N "out$TAP_IFNAME"
+        ip6tables -A FORWARD -m physdev --physdev-out "$TAP_IFNAME" -k "out$TAP_IFNAME"
+        ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$IP6ADDR" -j ACCEPT
+        ip6tables -A "out$TAP_IFNAME" -j REJECT
+        #ip6tables -L
+    fi
+
+    ebtables -N "in$TAP_IFNAME" -P DROP
+    ebtables -A FORWARD -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
+    # Stop any packets not from allocated MAC address
+    ebtables -A "in$TAP_IFNAME" -s ! "$MACADDR" -j DROP
+    if [ "$IPSUB" ]; then
+        # Allow ARP packets from this IP address to subnet
+        ebtables -A "in$TAP_IFNAME" -p arp --arp-ip-src "$IPADDR" --arp-ip-dst "$SUBNET" -j ACCEPT
+        # Allow IPv4
+        ebtables -A "in$TAP_IFNAME" -p ipv4 -j ACCEPT
+    fi
+    if [ "$PREFIX" ]; then
+        # Allow IPv6
+        ebtables -A "in$TAP_IFNAME" -p ipv6 -j ACCEPT
+    fi
+
+    ebtables -N "out$TAP_IFNAME" -P DROP
+    ebtables -A FORWARD -o "$TAP_IFNAME" -j "out$TAP_IFNAME"
+    if [ "$IPSUB" ]; then
+        # Allow ARP requests for this IP address from subnet
+        ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR" -j ACCEPT
+    fi
+    # Stop any packets not for allocated MAC address
+    ebtables -A "out$TAP_IFNAME" -d ! "$MACADDR" -j DROP
+    if [ "$IPSUB" ]; then
+        # Allow ARP replies to this IP address but only from subnet
+        ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode reply --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR"
+        # Allow IPv4
+        ebtables -A "out$TAP_IFNAME" -p ipv4 -j ACCEPT
+    fi
+    if [ "$PREFIX" ]; then
+        # Allow IPv6
+        ebtables -A "out$TAP_IFNAME" -p ipv6 -j ACCEPT
     fi
 }
 
@@ -192,7 +252,7 @@ case "$COMMAND" in
 # stop notify messages (on that port) going in/out and test notification
 
         # setup isolation rules
-        # we should try to shorten/optimise these by funnelling interface related stuff through chain and then dropping at end of chain
+        # make examples in nfdhcpd README much shorter and point to fold
 
         #kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "$@"
         ;;
