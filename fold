@@ -84,7 +84,7 @@ fi
 
 unrule() {
     if iptables -t mangle -L "in$TAP_IFNAME" >& /dev/null; then
-        iptables -t mangle -D PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -p udp -j "in$TAP_IFNAME"
+        iptables -t mangle -D PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         iptables -t mangle -F "in$TAP_IFNAME"
         iptables -t mangle -X "in$TAP_IFNAME"
     fi
@@ -109,12 +109,12 @@ unrule() {
         ip6tables -X "in$TAP_IFNAME"
     fi
     if ip6tables -L "out$TAP_IFNAME" >& /dev/null; then
-        ip6tables -D FORWARD -m physdev --physdev-out "$TAP_IFNAME" -k "out$TAP_IFNAME"
+        ip6tables -D FORWARD -m physdev --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
         ip6tables -F "out$TAP_IFNAME"
         ip6tables -X "out$TAP_IFNAME"
     fi
     if ebtables -t nat -L "in$TAP_IFNAME" >& /dev/null; then
-        ebtables -t nat -D PREROUTING -p arp -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ebtables -t nat -D PREROUTING -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
         ebtables -t nat -F "in$TAP_IFNAME"
         ebtables -t nat -X "in$TAP_IFNAME"
     fi
@@ -133,9 +133,9 @@ unrule() {
 rule() {
     if [ "$IPSUB" ]; then
         iptables -t mangle -N "in$TAP_IFNAME"
-        iptables -t mangle -A PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -p udp -j "in$TAP_IFNAME"
-        iptables -t mangle -A "in$TAP_IFNAME" --dport bootps -j NFQUEUE --queue-num "$DHCP_QUEUE"
-        iptables -t mangle -A "in$TAP_IFNAME" --dport domain -j NFQUEUE --queue-num "$DNS_QUEUE"
+        iptables -t mangle -A PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        iptables -t mangle -A "in$TAP_IFNAME" -p udp --dport bootps -j NFQUEUE --queue-num "$DHCP_QUEUE"
+        iptables -t mangle -A "in$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS_QUEUE"
         #iptables -t mangle -L
 
         iptables -N "in$TAP_IFNAME"
@@ -150,17 +150,17 @@ rule() {
         #iptables -L
 
         ebtables -t nat -N "in$TAP_IFNAME" -P RETURN
-        ebtables -t nat -A PREROUTING -p arp -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
-        ebtables -t nat -A "in$TAP_IFNAME" --arp-opcode request --arp-ip-dst "$(config1 nameservers "$NFDHCP_BINDING_IN")" -j arpreply --arpreply-mac "$MACADDR"
+        ebtables -t nat -A PREROUTING -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ebtables -t nat -A "in$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-dst "$(config1 nameservers "$NFDHCP_BINDING_IN")" -j arpreply --arpreply-mac "$MACADDR"
         #ebtables -t nat -L
     fi
 
     if [ "$PREFIX" ]; then
         ip6tables -t mangle -N "in$TAP_IFNAME"
         ip6tables -t mangle -A PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
-        ip6tables -t mangle -A "$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS6_QUEUE"
-        ip6tables -t mangle -A "$TAP_IFNAME" -p ipv6-icmp --icmpv6-type router-solicitation -j NFQUEUE --queue-num "$RS_QUEUE"
-        ip6tables -t mangle -A "$TAP_IFNAME" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j NFQUEUE --queue-num "$NS_QUEUE"
+        ip6tables -t mangle -A "in$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS6_QUEUE"
+        ip6tables -t mangle -A "in$TAP_IFNAME" -p ipv6-icmp --icmpv6-type router-solicitation -j NFQUEUE --queue-num "$RS_QUEUE"
+        ip6tables -t mangle -A "in$TAP_IFNAME" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j NFQUEUE --queue-num "$NS_QUEUE"
         #ip6tables -t mangle -L
 
         ip6tables -N "in$TAP_IFNAME"
@@ -172,7 +172,7 @@ rule() {
         ip6tables -A "in$TAP_IFNAME" -j REJECT
 
         ip6tables -N "out$TAP_IFNAME"
-        ip6tables -A FORWARD -m physdev --physdev-out "$TAP_IFNAME" -k "out$TAP_IFNAME"
+        ip6tables -A FORWARD -m physdev --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
         ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$IP6ADDR" -j ACCEPT
         ip6tables -A "out$TAP_IFNAME" -j REJECT
         #ip6tables -L
@@ -211,6 +211,8 @@ rule() {
         # Allow IPv6
         ebtables -A "out$TAP_IFNAME" -p ipv6 -j ACCEPT
     fi
+
+    #ebtables -L
 }
 
 untap() {
