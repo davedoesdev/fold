@@ -203,7 +203,7 @@ rule() {
     ebtables -A "out$TAP_IFNAME" -d ! "$MACADDR" -j DROP
     if [ "$IPSUB" ]; then
         # Allow ARP replies to this IP address but only from subnet
-        ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode reply --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR"
+        ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode reply --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR" -j ACCEPT
         # Allow IPv4
         ebtables -A "out$TAP_IFNAME" -p ipv4 -j ACCEPT
     fi
@@ -253,10 +253,12 @@ case "$COMMAND" in
 # need rule to put notify messages on queue
 # stop notify messages (on that port) going in/out and test notification
 
-        # setup isolation rules
+        # Received NS for a non-routable IP (fde5:824d:d315:3bb1::1)
+        # get error about recursion from nslookup even though result returned
+        # using --physdev-out in the OUTPUT, FORWARD and POSTROUTING chains for non-bridged traffic is not supported anymore
         # make examples in nfdhcpd README much shorter and point to fold
 
-        #kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "$@"
+        kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "$@"
         ;;
     *)
         echo "Unknown fold command '$COMMAND'" >&2
