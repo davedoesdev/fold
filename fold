@@ -79,7 +79,7 @@ if [ "$PREFIX" ]; then
     # Assume guest uses EUI-64.
     # For RFC-4941 (privacy extensions) we should use IP6ADDR="$PREFIX"
     # For RFC-7217 (stable privacy addresses) we should use rdiscd-mkaddress
-    IP6ADDR="$(python -c "import socket, binascii, sys; sys.stdout.write(binascii.hexlify(socket.inet_pton(socket.AF_INET6, '$(echo "$PREFIX" | sed 's/\/.*//')'))[:16])" | sed 's/\(.\{4\}\)/\1:/g')$("$HERE"/eui-64 "$MACADDR")"
+    IP6ADDR="$(python -c "import socket, binascii, sys; sys.stdout.write(binascii.hexlify(socket.inet_pton(socket.AF_INET6, '$(echo "$PREFIX" | sed 's/\/.*//')'))[:16])" | sed 's/\(.\{4\}\)/\1:/g')$("$HERE/eui-64" "$MACADDR")"
 fi
 
 unrule() {
@@ -94,7 +94,7 @@ unrule() {
         iptables -X "in$TAP_IFNAME"
     fi
     if iptables -L "out$TAP_IFNAME" >& /dev/null; then
-        iptables -D FORWARD -m physdev --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        iptables -D FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
         iptables -F "out$TAP_IFNAME"
         iptables -X "out$TAP_IFNAME"
     fi
@@ -109,7 +109,7 @@ unrule() {
         ip6tables -X "in$TAP_IFNAME"
     fi
     if ip6tables -L "out$TAP_IFNAME" >& /dev/null; then
-        ip6tables -D FORWARD -m physdev --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        ip6tables -D FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
         ip6tables -F "out$TAP_IFNAME"
         ip6tables -X "out$TAP_IFNAME"
     fi
@@ -144,7 +144,7 @@ rule() {
         iptables -A "in$TAP_IFNAME" -j REJECT
 
         iptables -N "out$TAP_IFNAME"
-        iptables -A FORWARD -m physdev --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        iptables -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
         iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$IPADDR" -j ACCEPT
         iptables -A "out$TAP_IFNAME" -j REJECT
         #iptables -L
@@ -167,14 +167,14 @@ rule() {
         ip6tables -A FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$PREFIX" -j ACCEPT
         # Allow packets to solicited-node multicast addresses (for neighbour solicitation)
-        # nfdhcpd checks the request is for the allocated prefix
-        ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d ff02:0:0:0:0:1:ff00::/104 -j ACCEPT
-        ip6tables -A "in$TAP_IFNAME" -j REJECT
+        # nfdhcpd checks if the request is for the allocated prefix (and only intercepts if it's not)
+        ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$("$HERE/solip6" "$IPADDR")" -j ACCEPT
+        ###ip6tables -A "in$TAP_IFNAME" -j REJECT
 
         ip6tables -N "out$TAP_IFNAME"
-        ip6tables -A FORWARD -m physdev --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        ip6tables -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
         ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$IP6ADDR" -j ACCEPT
-        ip6tables -A "out$TAP_IFNAME" -j REJECT
+        ###ip6tables -A "out$TAP_IFNAME" -j REJECT
         #ip6tables -L
     fi
 
@@ -198,6 +198,10 @@ rule() {
     if [ "$IPSUB" ]; then
         # Allow ARP requests for this IP address from subnet
         ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR" -j ACCEPT
+    fi
+    if [ "$PREFIX" ]; then
+        # Allow solicited-node multicast requests
+        ebtables -A "out$TAP_IFNAME" -d "$("$HERE/solmac" "$IPADDR") -j ACCEPT
     fi
     # Stop any packets not for allocated MAC address
     ebtables -A "out$TAP_IFNAME" -d ! "$MACADDR" -j DROP
@@ -251,11 +255,9 @@ case "$COMMAND" in
 # can we ping link local addresses? find out if switch should route them - as weave is an ethernet switch it probably shouldn't. even if we could, it means we couldn't restrict traffic based on prefix. so we should check we CAN'T ping local link addresses
 # neighbour solicitation address - do we need FORWARD and mangle rules for other direction? otherwise won't get through
 # need rule to put notify messages on queue
-# stop notify messages (on that port) going in/out and test notification
+# stop notify messages (on that port) going in/out and test notification; is it sending them now?
+# network goes down every so often
 
-        # Received NS for a non-routable IP (fde5:824d:d315:3bb1::1)
-        # get error about recursion from nslookup even though result returned
-        # using --physdev-out in the OUTPUT, FORWARD and POSTROUTING chains for non-bridged traffic is not supported anymore
         # make examples in nfdhcpd README much shorter and point to fold
 
         kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "$@"
