@@ -77,9 +77,10 @@ fi
 
 if [ "$PREFIX" ]; then
     # Assume guest uses EUI-64.
-    # For RFC-4941 (privacy extensions) we should use IP6ADDR="$PREFIX"
-    # (and check none of the firewall rules fail)
-    # For RFC-7217 (stable privacy addresses) we should use rdiscd-mkaddress
+    # For RFC-7217 (stable privacy addresses) we should use rdiscd-mkaddress.
+    # RFC-4941 (privacy extensions) aren't supported since we'd have no way
+    # to tell nfdhcpd what to use when rewriting neighbour advertisement source
+    # addresses.
     IP6ADDR="$("$HERE/exp6" "$(echo "$PREFIX" | sed 's/\/.*//')" 8):$("$HERE/eui-64" "$MACADDR")"
 fi
 
@@ -263,8 +264,6 @@ untap; tap
 case "$COMMAND" in
     kvm)
 
-# allow exp6 (and its callers) to take a prefix spec - either check right number of bits are supplied (and rest are zero) or zero them; IPy does the former
-# can we ping link local addresses? find out if switch should route them - as weave is an ethernet switch it probably shouldn't. even if we could, it means we couldn't restrict traffic based on prefix. so we should check we CAN'T ping local link addresses
 # need rule to put notify messages on queue
 # stop notify messages (on that port) going in/out and test notification; is it sending them now?
 # network goes down every so often

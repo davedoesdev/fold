@@ -4,4 +4,4 @@ if test $# -ne 1; then
     echo "usage: $0 <ip6addr>" 1>&2
     exit 1
 fi
-echo -n ff02::1:ff$("$(dirname "$0")/exp6" $1 16 3)
+echo -n ff02::1:ff$("$(dirname "$0")/exp6" "$1" 16 3)

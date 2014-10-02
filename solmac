@@ -4,4 +4,4 @@ if test $# -ne 1; then
     echo "usage: $0 <ip6addr>" 1>&2
     exit 1
 fi
-echo -n 33:33:ff:$("$(dirname "$0")/exp6" $1 16 3 | sed 's/\(.\{2\}\)$/:\1/')
+echo -n 33:33:ff:$("$(dirname "$0")/exp6" "$1" 16 3 | sed 's/\(.\{2\}\)$/:\1/')
