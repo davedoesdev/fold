@@ -80,7 +80,8 @@ if [ "$PREFIX" ]; then
     # For RFC-7217 (stable privacy addresses) we should use rdiscd-mkaddress.
     # RFC-4941 (privacy extensions) aren't supported since we'd have no way
     # to tell nfdhcpd what to use when rewriting neighbour advertisement source
-    # addresses.
+    # addresses. Also, allowing any VM to send/receive packets on any address
+    # isn't desirable.
     IP6ADDR="$("$HERE/exp6" "$(echo "$PREFIX" | sed 's/\/.*//')" 8):$("$HERE/eui-64" "$MACADDR")"
 fi
 
@@ -189,6 +190,20 @@ rule() {
         #ip6tables -L
     fi
 
+    NOTIFY_PORT="$(config notify_port "$NFDHCP_BINDING_IN")"
+    if [ "$NOTIFY_PORT" ]; then
+        if [ "$IPSUB" ]; then
+            iptables -t mangle -A "in$TAP_IFNAME" -p udp --dport "$NOTIFY_PORT" -j NFQUEUE --queue-num "$NOTIFY_QUEUE"
+            NOTIFY_IP="$(config notify_ip "$NFDHCP_BINDING_IN")"
+            if [ "$NOTIFY_IP" ]; then
+                ebtables -t nat -A "in$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-dst "$NOTIFY_IP" -j arpreply --arpreply-mac "$MACADDR"
+            fi
+        fi
+        if [ "$PREFIX" ]; then
+            ip6tables -t mangle -A "in$TAP_IFNAME" -p udp --dport "$NOTIFY_PORT" -j NFQUEUE --queue-num "$NOTIFY6_QUEUE"
+        fi
+    fi
+
     ebtables -N "in$TAP_IFNAME" -P DROP
     ebtables -A FORWARD -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
     # Stop any packets not from allocated MAC address
@@ -264,8 +279,8 @@ untap; tap
 case "$COMMAND" in
     kvm)
 
-# need rule to put notify messages on queue
-# stop notify messages (on that port) going in/out and test notification; is it sending them now?
+# stop notify messages (on that port) going in/out and test notification
+# rdiscd support and update note above
 # network goes down every so often
 # xen, capstan support
 # ndiscd address support (use guestfish to write secret to second disk)
