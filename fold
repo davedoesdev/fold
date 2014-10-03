@@ -193,14 +193,25 @@ rule() {
     NOTIFY_PORT="$(config notify_port "$NFDHCP_BINDING_IN")"
     if [ "$NOTIFY_PORT" ]; then
         if [ "$IPSUB" ]; then
-            iptables -t mangle -A "in$TAP_IFNAME" -p udp --dport "$NOTIFY_PORT" -j NFQUEUE --queue-num "$NOTIFY_QUEUE"
             NOTIFY_IP="$(config notify_ip "$NFDHCP_BINDING_IN")"
             if [ "$NOTIFY_IP" ]; then
+                iptables -t mangle -A "in$TAP_IFNAME" -p udp -d "$NOTIFY_IP" --dport "$NOTIFY_PORT" -j NFQUEUE --queue-num "$NOTIFY_QUEUE"
+                iptables -t mangle -A "in$TAP_IFNAME" -p udp --dport "$NOTIFY_PORT" -j DROP
+                iptables -t mangle -A "in$TAP_IFNAME" -p tcp --dport "$NOTIFY_PORT" -j DROP
+                iptables -I "out$TAP_IFNAME" -p udp --dport "$NOTIFY_PORT" -j REJECT
+                iptables -I "out$TAP_IFNAME" -p tcp --dport "$NOTIFY_PORT" -j REJECT
                 ebtables -t nat -A "in$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-dst "$NOTIFY_IP" -j arpreply --arpreply-mac "$MACADDR"
             fi
         fi
         if [ "$PREFIX" ]; then
-            ip6tables -t mangle -A "in$TAP_IFNAME" -p udp --dport "$NOTIFY_PORT" -j NFQUEUE --queue-num "$NOTIFY6_QUEUE"
+            NOTIFY_IP6="$(config notify_ip6 "$NFDHCP_BINDING_IN")"
+            if [ "$NOTIFY_IP6" ]; then
+                ip6tables -t mangle -A "in$TAP_IFNAME" -p udp -d "$NOTIFY_IP6" --dport "$NOTIFY_PORT" -j NFQUEUE --queue-num "$NOTIFY6_QUEUE"
+                ip6tables -t mangle -A "in$TAP_IFNAME" -p udp --dport "$NOTIFY_PORT" -j DROP
+                ip6tables -t mangle -A "in$TAP_IFNAME" -p tcp --dport "$NOTIFY_PORT" -j DROP
+                ip6tables -I "out$TAP_IFNAME" -p udp --dport "$NOTIFY_PORT" -j REJECT
+                ip6tables -I "out$TAP_IFNAME" -p tcp --dport "$NOTIFY_PORT" -j REJECT
+            fi
         fi
     fi
 
@@ -279,11 +290,9 @@ untap; tap
 case "$COMMAND" in
     kvm)
 
-# stop notify messages (on that port) going in/out and test notification
-# rdiscd support and update note above
+# rdiscd support and update note above (use guestfish to write secret to second disk)
 # network goes down every so often
 # xen, capstan support
-# ndiscd address support (use guestfish to write secret to second disk)
 # make examples in nfdhcpd README much shorter and point to fold
 
         kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "$@"
