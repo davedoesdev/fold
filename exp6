@@ -6,7 +6,13 @@ parser.add_argument("ip6addr", help="IPv6 address")
 parser.add_argument("left", help="Number of leftmost bytes to output", type=int, nargs="?", default=16)
 parser.add_argument("right", help="Number of rightmost bytes to output", type=int, nargs="?", default=16)
 args = parser.parse_args()
-exp = socket.inet_pton(socket.AF_INET6, args.ip6addr)
+ip6addr = args.ip6addr.partition("/")
+exp = socket.inet_pton(socket.AF_INET6, ip6addr[0])
+if ip6addr[2]:
+    prefix = int(ip6addr[2])
+    n = long(exp.encode('hex'), 16)
+    n &= ~(2 ** (128 - prefix) - 1)
+    exp = ''.join([chr(n >> (i * 8) & 255) for i in xrange(15, -1, -1)])
 hex = binascii.hexlify(exp)
 out = hex[:args.left * 2][-args.right * 2:]
 if args.right < args.left:
