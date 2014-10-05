@@ -10,7 +10,7 @@ HERE="$(dirname "$0")"
 
 usage() {
     echo "Usage:"
-    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
+    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-k <keyfile>] <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
     exit 1
 }
 
@@ -19,7 +19,7 @@ usage() {
     exit 1
 }
 
-while getopts 4:6: opt
+while getopts 4:6:k: opt
 do
     case $opt in
         4)
@@ -27,6 +27,9 @@ do
             ;;
         6)
             PREFIX="$OPTARG"
+            ;;
+        k)
+            KEYFILE="$OPTARG"
             ;;
         *)
             usage
@@ -76,28 +79,27 @@ if [ "$IPSUB" ]; then
 fi
 
 if [ "$PREFIX" ]; then
-# rdiscd -m "$MACADDR" "$PREFIX" stable-privacy
+    if [ "KEYFILE" ]; then
+        # For RFC-7217 (stable privacy addresses), support rdiscd.
+        # We generate an address using rdiscd-mkaddress here and write it into
+        # a disk image which we attach to the VM. rdiscd can then pick this up
+        # in the guest. We could generate a random address here but it's nice
+        # to be able to know which IPv6 address relates to a MAC address.
+        IP6ADDR="$(rdiscd-mkaddress -m "$MACADDR" -k "$KEYFILE" "$PREFIX" stable-privacy)"
 # need to pass in key file - use that to gate if using?
 # also need to spec dir to output these disks
 # and clean up the disks
 # genext2fs -b 1440 "$1"
 # e2cp - "$1:$2"
-
-    # For RFC-7217 (stable privacy addresses), support rdiscd.
-    # We generate an address using rdiscd-mkaddress here and write it into
-    # a disk image which we attach to the VM. rdiscd can then pick this up
-    # in the guest. We could generate a random address here but it's nice
-    # to be able to know which IPv6 address relates to a MAC address.
-
-
-    # Assume guest uses EUI-64.
-
+    else
+        # Assume guest uses EUI-64.
+        IP6ADDR="$("$HERE/exp6" "$PREFIX" 8):$("$HERE/eui-64" "$MACADDR")"
+    fi
     # RFC-4941 (privacy extensions) aren't supported since we'd have no way
     # to tell nfdhcpd what to use when rewriting neighbour advertisement source
     # addresses. Also, allowing any VM to send/receive packets on any address
     # isn't desirable - we want to know a VM is only sending traffic on its
     # expected address (i.e. it's not impersonating another VM).
-    IP6ADDR="$("$HERE/exp6" "$PREFIX" 8):$("$HERE/eui-64" "$MACADDR")"
 fi
 
 unrule() {
