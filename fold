@@ -10,7 +10,7 @@ HERE="$(dirname "$0")"
 
 usage() {
     echo "Usage:"
-    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-k <keyfile>] <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
+    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
     exit 1
 }
 
@@ -19,6 +19,8 @@ usage() {
     exit 1
 }
 
+unset IPSUB PREFIX KEYFILE RDISCD_IMG_FILE
+RDISCD_IMG_DIR=.
 while getopts 4:6:k: opt
 do
     case $opt in
@@ -30,6 +32,9 @@ do
             ;;
         k)
             KEYFILE="$OPTARG"
+            ;;
+        d)
+            RDISCD_IMG_DIR="$OPTARG"
             ;;
         *)
             usage
@@ -79,18 +84,16 @@ if [ "$IPSUB" ]; then
 fi
 
 if [ "$PREFIX" ]; then
-    if [ "KEYFILE" ]; then
+    if [ "$KEYFILE" ]; then
         # For RFC-7217 (stable privacy addresses), support rdiscd.
         # We generate an address using rdiscd-mkaddress here and write it into
         # a disk image which we attach to the VM. rdiscd can then pick this up
         # in the guest. We could generate a random address here but it's nice
         # to be able to know which IPv6 address relates to a MAC address.
         IP6ADDR="$(rdiscd-mkaddress -m "$MACADDR" -k "$KEYFILE" "$PREFIX" stable-privacy)"
-# need to pass in key file - use that to gate if using?
-# also need to spec dir to output these disks
-# and clean up the disks
-# genext2fs -b 1440 "$1"
-# e2cp - "$1:$2"
+        RDISCD_IMG_FILE="$RDISCD_IMG_DIR/rdiscd_$TAP_IFNAME.img"
+        genext2fs -b 1440 "$RDISCD_IMG_FILE"
+        "$HERE/exp6" "$IP6ADDR" 16 8 | e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id"
     else
         # Assume guest uses EUI-64.
         IP6ADDR="$("$HERE/exp6" "$PREFIX" 8):$("$HERE/eui-64" "$MACADDR")"
@@ -289,6 +292,7 @@ tap() {
 cleanup() {
     untap; unrule
     rm -f "$NFDHCP_BINDING_OUT"
+    [ "$RDISCD_IMG_FILE" ] && rm -f "$RDISCD_IMG_FILE"
 }
 
 trap cleanup EXIT
@@ -306,13 +310,12 @@ untap; tap
 
 case "$COMMAND" in
     kvm)
-
-# rdiscd support and update note above (use guestfish to write secret to second disk)
+# rdiscd support: permissions (do we care?), test with rdiscd in guest - automount disk in guest
 # xen, capstan support
 # make examples in nfdhcpd README much shorter and point to fold
 # network goes down every so often
 
-        kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "$@"
+        kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "${@//\[rdisk_img_file\]/$RDISCD_IMG_FILE}"
         ;;
     *)
         echo "Unknown fold command '$COMMAND'" >&2
