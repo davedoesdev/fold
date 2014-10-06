@@ -93,7 +93,8 @@ if [ "$PREFIX" ]; then
         IP6ADDR="$(rdiscd-mkaddress -m "$MACADDR" -k "$KEYFILE" "$PREFIX" stable-privacy)"
         RDISCD_IMG_FILE="$RDISCD_IMG_DIR/rdiscd_$TAP_IFNAME.img"
         genext2fs -b 1440 "$RDISCD_IMG_FILE"
-        "$HERE/exp6" "$IP6ADDR" 16 8 | e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id"
+        echo "::$("$HERE/exp6" "$IP6ADDR" 16 8)" | e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id"
+        echo 64 | e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id-len"
     else
         # Assume guest uses EUI-64.
         IP6ADDR="$("$HERE/exp6" "$PREFIX" 8):$("$HERE/eui-64" "$MACADDR")"
