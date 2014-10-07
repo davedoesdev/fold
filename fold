@@ -291,12 +291,13 @@ tap() {
 }
 
 cleanup() {
+    trap - EXIT
     untap; unrule
     rm -f "$NFDHCP_BINDING_OUT"
     [ "$RDISCD_IMG_FILE" ] && rm -f "$RDISCD_IMG_FILE"
 }
 
-trap cleanup EXIT
+trap cleanup EXIT # bash calls cleanup when exiting due to signals too
 
 unrule; rule
 untap; tap
@@ -311,13 +312,12 @@ untap; tap
 
 case "$COMMAND" in
     kvm)
-# rdiscd support: permissions (do we care?), test with rdiscd in guest - automount disk in guest
-# xen, capstan support
-# make examples in nfdhcpd README much shorter and point to fold
-# network goes down every so often
-
         kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "${@//\[rdisk_img_file\]/$RDISCD_IMG_FILE}"
         ;;
+# TODO
+# multicast
+# make examples in nfdhcpd README much shorter and point to fold
+# capstan
     *)
         echo "Unknown fold command '$COMMAND'" >&2
         usage
