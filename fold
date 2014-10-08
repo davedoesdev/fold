@@ -10,7 +10,7 @@ HERE="$(dirname "$0")"
 
 usage() {
     echo "Usage:"
-    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
+    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>] [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
     exit 1
 }
 
@@ -21,7 +21,9 @@ usage() {
 
 unset IPSUB PREFIX KEYFILE RDISCD_IMG_FILE
 RDISCD_IMG_DIR=.
-while getopts 4:6:k: opt
+MULTI4=()
+MULTI6=()
+while getopts 4:6:m:k:d: opt
 do
     case $opt in
         4)
@@ -29,6 +31,13 @@ do
             ;;
         6)
             PREFIX="$OPTARG"
+            ;;
+        m)
+            if [[ "$OPTARG" == *.* ]]; then
+                MULTI4+=("$OPTARG")
+            else
+                MULTI6+=("$OPTARG")
+            fi
             ;;
         k)
             KEYFILE="$OPTARG"
@@ -165,11 +174,17 @@ rule() {
         iptables -N "in$TAP_IFNAME"
         iptables -A FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         iptables -A "in$TAP_IFNAME" -s "$IPADDR" -d "$SUBNET" -j ACCEPT
+        for addr in "${MULTI4[@]}"; do
+            iptables -A "in$TAP_IFNAME" -s "$IPADDR" -d "$addr" -j ACCEPT
+        done
         iptables -A "in$TAP_IFNAME" -j REJECT
 
         iptables -N "out$TAP_IFNAME"
         iptables -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
         iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$IPADDR" -j ACCEPT
+        for addr in "${MULTI4[@]}"; do
+            iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$addr" -j ACCEPT
+        done
         iptables -A "out$TAP_IFNAME" -j REJECT
         #iptables -L
 
@@ -190,6 +205,9 @@ rule() {
         ip6tables -N "in$TAP_IFNAME"
         ip6tables -A FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$PREFIX" -j ACCEPT
+        for addr in "${MULTI6[@]}"; do
+            ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$addr" -j ACCEPT
+        done
         # Allow packets to solicited-node multicast addresses (for neighbour
         # solicitations). nfdhcpd checks if the request is for the allocated
         # prefix (and only intercepts if it's not). nfdhcp also sets the source
@@ -202,6 +220,9 @@ rule() {
         ip6tables -N "out$TAP_IFNAME"
         ip6tables -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
         ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$IP6ADDR" -j ACCEPT
+        for addr in "${MULTI6[@]}"; do
+            ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$addr" -j ACCEPT
+        done
         # Allow packets to our solicited-node multicast address (for neighbour
         # solicitations).
         # Note that we expect neighbour advertisements to have non-link local
@@ -315,7 +336,8 @@ case "$COMMAND" in
         kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "${@//\[rdisk_img_file\]/$RDISCD_IMG_FILE}"
         ;;
 # TODO
-# multicast
+# multicast - network is unreachable
+# nfdhcpd log rotation not working
 # make examples in nfdhcpd README much shorter and point to fold
 # capstan
     *)
