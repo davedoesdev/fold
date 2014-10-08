@@ -151,6 +151,7 @@ unrule() {
         ebtables -t nat -F "in$TAP_IFNAME"
         ebtables -t nat -X "in$TAP_IFNAME"
     fi
+    #ebtables -D FORWARD --log >& /dev/null || true
     if ebtables -L "in$TAP_IFNAME" >& /dev/null; then
         ebtables -D FORWARD -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
         ebtables -F "in$TAP_IFNAME"
@@ -173,17 +174,17 @@ rule() {
 
         iptables -N "in$TAP_IFNAME"
         iptables -A FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
-        iptables -A "in$TAP_IFNAME" -s "$IPADDR" -d "$SUBNET" -j ACCEPT
+        iptables -A "in$TAP_IFNAME" -s "$IPADDR" -d "$SUBNET" -j RETURN
         for addr in "${MULTI4[@]}"; do
-            iptables -A "in$TAP_IFNAME" -s "$IPADDR" -d "$addr" -j ACCEPT
+            iptables -A "in$TAP_IFNAME" -s "$IPADDR" -d "$addr" -j RETURN
         done
         iptables -A "in$TAP_IFNAME" -j REJECT
 
         iptables -N "out$TAP_IFNAME"
         iptables -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
-        iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$IPADDR" -j ACCEPT
+        iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$IPADDR" -j RETURN
         for addr in "${MULTI4[@]}"; do
-            iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$addr" -j ACCEPT
+            iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$addr" -j RETURN
         done
         iptables -A "out$TAP_IFNAME" -j REJECT
         #iptables -L
@@ -204,9 +205,9 @@ rule() {
 
         ip6tables -N "in$TAP_IFNAME"
         ip6tables -A FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
-        ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$PREFIX" -j ACCEPT
+        ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$PREFIX" -j RETURN
         for addr in "${MULTI6[@]}"; do
-            ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$addr" -j ACCEPT
+            ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$addr" -j RETURN
         done
         # Allow packets to solicited-node multicast addresses (for neighbour
         # solicitations). nfdhcpd checks if the request is for the allocated
@@ -214,20 +215,20 @@ rule() {
         # address to the non-link local address.
         # Note that we expect neighbour advertisements to have non-link local
         # source and destination.
-        ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d ff02:0:0:0:0:1:ff00::/104 -p ipv6-icmp --icmpv6-type neighbour-solicitation -j ACCEPT
+        ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d ff02:0:0:0:0:1:ff00::/104 -p ipv6-icmp --icmpv6-type neighbour-solicitation -j RETURN
         ip6tables -A "in$TAP_IFNAME" -j REJECT
 
         ip6tables -N "out$TAP_IFNAME"
         ip6tables -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
-        ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$IP6ADDR" -j ACCEPT
+        ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$IP6ADDR" -j RETURN
         for addr in "${MULTI6[@]}"; do
-            ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$addr" -j ACCEPT
+            ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$addr" -j RETURN
         done
         # Allow packets to our solicited-node multicast address (for neighbour
         # solicitations).
         # Note that we expect neighbour advertisements to have non-link local
         # source and destination.
-        ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$("$HERE/solip6" "$IP6ADDR")" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j ACCEPT
+        ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$("$HERE/solip6" "$IP6ADDR")" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j RETURN
         ip6tables -A "out$TAP_IFNAME" -j REJECT
         #ip6tables -L
     fi
@@ -257,44 +258,44 @@ rule() {
         fi
     fi
 
+    #ebtables -I FORWARD --log
     ebtables -N "in$TAP_IFNAME" -P DROP
     ebtables -A FORWARD -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
     # Stop any packets not from allocated MAC address
     ebtables -A "in$TAP_IFNAME" -s ! "$MACADDR" -j DROP
     if [ "$IPSUB" ]; then
         # Allow ARP packets from this IP address to subnet
-        ebtables -A "in$TAP_IFNAME" -p arp --arp-ip-src "$IPADDR" --arp-ip-dst "$SUBNET" -j ACCEPT
+        ebtables -A "in$TAP_IFNAME" -p arp --arp-ip-src "$IPADDR" --arp-ip-dst "$SUBNET" -j RETURN
         # Allow IPv4
-        ebtables -A "in$TAP_IFNAME" -p ipv4 -j ACCEPT
+        ebtables -A "in$TAP_IFNAME" -p ipv4 -j RETURN
     fi
     if [ "$PREFIX" ]; then
         # Allow IPv6
-        ebtables -A "in$TAP_IFNAME" -p ipv6 -j ACCEPT
+        ebtables -A "in$TAP_IFNAME" -p ipv6 -j RETURN
     fi
 
     ebtables -N "out$TAP_IFNAME" -P DROP
     ebtables -A FORWARD -o "$TAP_IFNAME" -j "out$TAP_IFNAME"
     if [ "$IPSUB" ]; then
         # Allow ARP requests for this IP address from subnet
-        ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR" -j ACCEPT
+        ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR" -j RETURN
     fi
     if [ "$PREFIX" ]; then
         # Allow solicited-node multicast requests
-        ebtables -A "out$TAP_IFNAME" -d "$("$HERE/solmac" "$IP6ADDR")" -j ACCEPT
+        ebtables -A "out$TAP_IFNAME" -d "$("$HERE/solmac" "$IP6ADDR")" -j RETURN
     fi
     # Stop any packets not for allocated MAC address
     ebtables -A "out$TAP_IFNAME" -d ! "$MACADDR" -j DROP
     if [ "$IPSUB" ]; then
         # Allow ARP replies to this IP address but only from subnet
-        ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode reply --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR" -j ACCEPT
+        ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode reply --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR" -j RETURN
         # Allow IPv4
-        ebtables -A "out$TAP_IFNAME" -p ipv4 -j ACCEPT
+        ebtables -A "out$TAP_IFNAME" -p ipv4 -j RETURN
     fi
     if [ "$PREFIX" ]; then
         # Allow IPv6
-        ebtables -A "out$TAP_IFNAME" -p ipv6 -j ACCEPT
+        ebtables -A "out$TAP_IFNAME" -p ipv6 -j RETURN
     fi
-
     #ebtables -L
 }
 
@@ -336,7 +337,7 @@ case "$COMMAND" in
         kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "${@//\[rdisk_img_file\]/$RDISCD_IMG_FILE}"
         ;;
 # TODO
-# multicast - network is unreachable
+# multicast - add ebtables rules for multicast mac addresses
 # nfdhcpd log rotation not working
 # make examples in nfdhcpd README much shorter and point to fold
 # capstan
