@@ -1,0 +1,26 @@
+#!/usr/bin/env python
+# convert an IPv6 address into a mulicast MAC address
+import argparse, socket, binascii, sys, re
+
+regex = re.compile(r'(.{2})(?!$)')
+def fmt(n):
+    exp = ''.join([chr(n >> (i * 8) & 255) for i in xrange(5, -1, -1)])
+    hex = binascii.hexlify(exp)
+    return regex.sub(r'\1:', hex)
+
+parser = argparse.ArgumentParser()
+parser.add_argument("ip6addr", help="IPv6 address")
+args = parser.parse_args()
+ip6addr = args.ip6addr.partition("/")
+b = ip6addr[2]
+b = int(b) if b else 128
+exp = socket.inet_pton(socket.AF_INET6, ip6addr[0])
+n = long(exp.encode('hex'), 16)
+n &= (2 ** 32 - 1)
+n |= 0x333300000000
+m = ~(2 ** (32 - max(b - 96, 0)) - 1)
+n &= m
+sys.stdout.write(fmt(n))
+if b < 128:
+    sys.stdout.write('/')
+    sys.stdout.write(fmt(m))

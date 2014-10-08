@@ -279,10 +279,18 @@ rule() {
     if [ "$IPSUB" ]; then
         # Allow ARP requests for this IP address from subnet
         ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR" -j RETURN
+        # Allow IPv4 multicast 
+        for addr in "${MULTI4[@]}"; do
+            ebtables -A "out$TAP_IFNAME" -d "$("$HERE/mcmac4" "$addr")" -j RETURN
+        done
     fi
     if [ "$PREFIX" ]; then
         # Allow solicited-node multicast requests
         ebtables -A "out$TAP_IFNAME" -d "$("$HERE/solmac" "$IP6ADDR")" -j RETURN
+        # Allow IPv6 multicast 
+        for addr in "${MULTI6[@]}"; do
+            ebtables -A "out$TAP_IFNAME" -d "$("$HERE/mcmac6" "$addr")" -j RETURN
+        done
     fi
     # Stop any packets not for allocated MAC address
     ebtables -A "out$TAP_IFNAME" -d ! "$MACADDR" -j DROP
