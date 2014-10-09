@@ -10,7 +10,7 @@ HERE="$(dirname "$0")"
 
 usage() {
     echo "Usage:"
-    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>] [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
+    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]... [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
     exit 1
 }
 
@@ -345,10 +345,8 @@ case "$COMMAND" in
         kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "${@//\[rdisk_img_file\]/$RDISCD_IMG_FILE}"
         ;;
 # TODO
-# multicast - add ebtables rules for multicast mac addresses
-# nfdhcpd log rotation not working
-# make examples in nfdhcpd README much shorter and point to fold
-# capstan
+# make examples in nfdhcpd README much shorter and point to fold; also document new stuff like notifications
+# capstan (needs to be able to run with existing tap device)
     *)
         echo "Unknown fold command '$COMMAND'" >&2
         usage
