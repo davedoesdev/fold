@@ -6,7 +6,7 @@ TAP_IFNAME=vethfotp$$
 NFDHCP_BINDING_OUT="/var/lib/nfdhcpd/$TAP_IFNAME"
 NFDHCP_CFG="/etc/nfdhcpd/nfdhcpd.conf"
 MTU=16384 # max TAP MTU
-HERE="$(dirname "$0")"
+UTILS="$(dirname "$0")/utils"
 
 usage() {
     echo "Usage:"
@@ -102,11 +102,11 @@ if [ "$PREFIX" ]; then
         IP6ADDR="$(rdiscd-mkaddress -m "$MACADDR" -k "$KEYFILE" "$PREFIX" stable-privacy)"
         RDISCD_IMG_FILE="$RDISCD_IMG_DIR/rdiscd_$TAP_IFNAME.img"
         genext2fs -b 1440 "$RDISCD_IMG_FILE"
-        echo "::$("$HERE/exp6" "$IP6ADDR" 16 8)" | e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id"
+        echo "::$("$UTILS/exp6" "$IP6ADDR" 16 8)" | e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id"
         echo 64 | e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id-len"
     else
         # Assume guest uses EUI-64.
-        IP6ADDR="$("$HERE/exp6" "$PREFIX" 8):$("$HERE/eui-64" "$MACADDR")"
+        IP6ADDR="$("$UTILS/exp6" "$PREFIX" 8):$("$UTILS/eui-64" "$MACADDR")"
     fi
     # RFC-4941 (privacy extensions) aren't supported since we'd have no way
     # to tell nfdhcpd what to use when rewriting neighbour advertisement source
@@ -228,7 +228,7 @@ rule() {
         # solicitations).
         # Note that we expect neighbour advertisements to have non-link local
         # source and destination.
-        ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$("$HERE/solip6" "$IP6ADDR")" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j RETURN
+        ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$("$UTILS/solip6" "$IP6ADDR")" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j RETURN
         ip6tables -A "out$TAP_IFNAME" -j REJECT
         #ip6tables -L
     fi
@@ -281,15 +281,15 @@ rule() {
         ebtables -A "out$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-src "$SUBNET" --arp-ip-dst "$IPADDR" -j RETURN
         # Allow IPv4 multicast 
         for addr in "${MULTI4[@]}"; do
-            ebtables -A "out$TAP_IFNAME" -d "$("$HERE/mcmac4" "$addr")" -j RETURN
+            ebtables -A "out$TAP_IFNAME" -d "$("$UTILS/mcmac4" "$addr")" -j RETURN
         done
     fi
     if [ "$PREFIX" ]; then
         # Allow solicited-node multicast requests
-        ebtables -A "out$TAP_IFNAME" -d "$("$HERE/solmac" "$IP6ADDR")" -j RETURN
+        ebtables -A "out$TAP_IFNAME" -d "$("$UTILS/solmac" "$IP6ADDR")" -j RETURN
         # Allow IPv6 multicast 
         for addr in "${MULTI6[@]}"; do
-            ebtables -A "out$TAP_IFNAME" -d "$("$HERE/mcmac6" "$addr")" -j RETURN
+            ebtables -A "out$TAP_IFNAME" -d "$("$UTILS/mcmac6" "$addr")" -j RETURN
         done
     fi
     # Stop any packets not for allocated MAC address

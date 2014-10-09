@@ -63,7 +63,7 @@ ADDRESS6:database.=fde5:824d:d315:3bb1::9
 
 Fold will add `IPADDR`, `SUBNET`, `PREFIX` and `IP6ADDR` to the settings in your binding file.
 
-`<macaddr>` is a (mandatory) MAC address to give the VM. Note you can use the `lamac` script to generate a random [locally administered address](http://en.wikipedia.org/wiki/MAC_address#Address_details).
+`<macaddr>` is a (mandatory) MAC address to give the VM. Note you can use the `utils/lamac` script to generate a random [locally administered address](http://en.wikipedia.org/wiki/MAC_address#Address_details).
 
 `<kvm args>` should contain arguments necessary to load your VM, for example `-hda disk.qcow2`.
 
