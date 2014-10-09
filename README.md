@@ -53,7 +53,7 @@ If you don't specify `-k` then your VM's guest OS is assumed to be using [Modifi
 
 `<nfdhcp-binding-file>` is the (mandatory) binding file containing configuration data for `nfdhcpd`. It will be used by `nfdhcpd` to supply information such as a hostname and DNS address and TXT records to the VM's guest OS. Please see the [nfdhcpd documentation](https://github.com/davedoesdev/nfdhcpd) for more information. Here's an example:
 
-```
+```ini
 HOSTNAME=test
 NAMESERVERS=10.0.1.50
 NAMESERVERS6=fde5:824d:d315:3bb1::1
