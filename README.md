@@ -59,6 +59,7 @@ NAMESERVERS=10.0.1.50
 NAMESERVERS6=fde5:824d:d315:3bb1::1
 ADDRESS:database.=10.0.1.1
 ADDRESS6:database.=fde5:824d:d315:3bb1::9
+TXT:table.=Users
 ```
 
 Fold will add `IPADDR`, `SUBNET`, `PREFIX` and `IP6ADDR` to the settings in your binding file.
