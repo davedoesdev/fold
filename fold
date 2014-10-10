@@ -345,7 +345,6 @@ case "$COMMAND" in
         kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "${@//\[rdisk_img_file\]/$RDISCD_IMG_FILE}"
         ;;
 # TODO
-# make examples in nfdhcpd README much shorter and point to fold; also document new stuff like notifications
 # capstan (needs to be able to run with existing tap device)
     *)
         echo "Unknown fold command '$COMMAND'" >&2
