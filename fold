@@ -72,13 +72,15 @@ config1() {
     config "$1" "$2" | sed 's/,.*$//' | trim
 }
 
-DHCP_QUEUE=$(config dhcp_queue "$NFDHCP_CFG")
-RS_QUEUE=$(config rs_queue "$NFDHCP_CFG")
-NS_QUEUE=$(config ns_queue "$NFDHCP_CFG")
-DNS_QUEUE=$(config dns_queue "$NFDHCP_CFG")
-DNS6_QUEUE=$(config dns6_queue "$NFDHCP_CFG")
-NOTIFY_QUEUE=$(config notify_queue "$NFDHCP_CFG")
-NOTIFY6_QUEUE=$(config notify6_queue "$NFDHCP_CFG")
+DHCP_QUEUE="$(config dhcp_queue "$NFDHCP_CFG")"
+RS_QUEUE="$(config rs_queue "$NFDHCP_CFG")"
+NS_QUEUE="$(config ns_queue "$NFDHCP_CFG")"
+DNS_QUEUE="$(config dns_queue "$NFDHCP_CFG")"
+DNS6_QUEUE="$(config dns6_queue "$NFDHCP_CFG")"
+NOTIFY_QUEUE="$(config notify_queue "$NFDHCP_CFG")"
+NOTIFY6_QUEUE="$(config notify6_queue "$NFDHCP_CFG")"
+NAMESERVER="$(config1 nameservers "$NFDHCP_BINDING_IN")"
+echo $DHCP_QUEUE $NAMESERVER
 
 if [ "$IPSUB" ]; then
     # extract the IP address from an ipaddr/subnet spec
@@ -191,7 +193,9 @@ rule() {
 
         ebtables -t nat -N "in$TAP_IFNAME" -P RETURN
         ebtables -t nat -A PREROUTING -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
-        ebtables -t nat -A "in$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-dst "$(config1 nameservers "$NFDHCP_BINDING_IN")" -j arpreply --arpreply-mac "$MACADDR"
+        if [ "$NAMESERVER" ]; then
+            ebtables -t nat -A "in$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-dst "$NAMESERVER" -j arpreply --arpreply-mac "$MACADDR"
+        fi
         #ebtables -t nat -L
     fi
 
