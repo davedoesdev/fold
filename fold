@@ -80,7 +80,6 @@ DNS6_QUEUE="$(config dns6_queue "$NFDHCP_CFG")"
 NOTIFY_QUEUE="$(config notify_queue "$NFDHCP_CFG")"
 NOTIFY6_QUEUE="$(config notify6_queue "$NFDHCP_CFG")"
 NAMESERVER="$(config1 nameservers "$NFDHCP_BINDING_IN")"
-echo $DHCP_QUEUE $NAMESERVER
 
 if [ "$IPSUB" ]; then
     # extract the IP address from an ipaddr/subnet spec
