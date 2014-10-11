@@ -10,7 +10,7 @@ UTILS="$(dirname "$0")/utils"
 
 usage() {
     echo "Usage:"
-    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]... [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] <nfdhcp-binding-file> <macaddr> kvm [<kvm args> ...]"
+    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]... [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] [-b <nfdhcp-binding-file>] <macaddr> kvm [<kvm args> ...]"
     exit 1
 }
 
@@ -23,7 +23,8 @@ unset IPSUB PREFIX KEYFILE RDISCD_IMG_FILE
 RDISCD_IMG_DIR=.
 MULTI4=()
 MULTI6=()
-while getopts 4:6:m:k:d: opt
+NFDHCP_BINDING_IN=/dev/null
+while getopts 4:6:m:k:d:b: opt
 do
     case $opt in
         4)
@@ -45,6 +46,9 @@ do
         d)
             RDISCD_IMG_DIR="$OPTARG"
             ;;
+        b)
+            NFDHCP_BINDING_IN="$OPTARG"
+            ;;
         *)
             usage
             ;;
@@ -53,12 +57,11 @@ done
 
 shift $((OPTIND-1))
 
-[ $# -gt 2 ] || usage
+[ $# -gt 1 ] || usage
 
-NFDHCP_BINDING_IN="$1"
-MACADDR="$2"
-COMMAND="$3"
-shift 3
+MACADDR="$1"
+COMMAND="$2"
+shift 2
 
 trim() {
     sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$@"
