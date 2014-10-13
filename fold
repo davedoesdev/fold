@@ -4,14 +4,15 @@ set -e
 # TODO:
 # gateway6: linux seems not to setup default route to global even with R flag
 #           need to set up something on weave bridge which can route to outside world
-#           will probably need to relax firewall rules for traffic to/from gateway6mac
-# should we rewrite incoming NAs to ll addr?
+#           will probably need to relax firewall rules for traffic to/from gateway6mac/gatewaymac
 
 BRIDGE=weave
 TAP_IFNAME=vethfotp$$
 NFDHCP_BINDING_OUT="/var/lib/nfdhcpd/$TAP_IFNAME"
 NFDHCP_CFG="/etc/nfdhcpd/nfdhcpd.conf"
 MTU=16384 # max TAP MTU
+let "MARK_GATEWAY=1<<0"
+let "MARK_GATEWAY6=1<<1"
 UTILS="$(dirname "$0")/utils"
 
 usage() {
@@ -89,6 +90,8 @@ DNS6_QUEUE="$(config dns6_queue "$NFDHCP_CFG")"
 NOTIFY_QUEUE="$(config notify_queue "$NFDHCP_CFG")"
 NOTIFY6_QUEUE="$(config notify6_queue "$NFDHCP_CFG")"
 NAMESERVER="$(config1 nameservers "$NFDHCP_BINDING_IN")"
+GATEWAY_MAC="$(config gateway_mac "$NFDHCP_BINDING_IN")"
+GATEWAY6_MAC="$(config gateway6_mac "$NFDHCP_BINDING_IN")"
 
 if [ "$IPSUB" ]; then
     # extract the IP address from an ipaddr/subnet spec
@@ -175,6 +178,9 @@ unrule() {
 }
 
 rule() {
+    ebtables -t nat -N "in$TAP_IFNAME" -P RETURN
+    ebtables -t nat -A PREROUTING -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
+
     if [ "$IPSUB" ]; then
         iptables -t mangle -N "in$TAP_IFNAME"
         iptables -t mangle -A PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
@@ -188,6 +194,9 @@ rule() {
         for addr in "${MULTI4[@]}"; do
             iptables -A "in$TAP_IFNAME" -s "$IPADDR" -d "$addr" -j RETURN
         done
+        if [ "$GATEWAY_MAC" ]; then
+            iptables -A "in$TAP_IFNAME" -s "$IPADDR" -m mark --mark "$MARK_GATEWAY/$MARK_GATEWAY" -j RETURN
+        fi
         iptables -A "in$TAP_IFNAME" -j REJECT
 
         iptables -N "out$TAP_IFNAME"
@@ -196,13 +205,17 @@ rule() {
         for addr in "${MULTI4[@]}"; do
             iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$addr" -j RETURN
         done
+        if [ "$GATEWAY_MAC" ]; then
+            iptables -A "out$TAP_IFNAME" -m mac --mac-source "$GATEWAY_MAC" -d "$IPADDR" -j RETURN
+        fi
         iptables -A "out$TAP_IFNAME" -j REJECT
         #iptables -L
 
-        ebtables -t nat -N "in$TAP_IFNAME" -P RETURN
-        ebtables -t nat -A PREROUTING -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
         if [ "$NAMESERVER" ]; then
             ebtables -t nat -A "in$TAP_IFNAME" -p arp --arp-opcode request --arp-ip-dst "$NAMESERVER" -j arpreply --arpreply-mac "$MACADDR"
+        fi
+        if [ "$GATEWAY_MAC" ]; then
+            ebtables -t nat -A "in$TAP_IFNAME" -d "$GATEWAY_MAC" -j mark --mark-or "$MARK_GATEWAY" --mark-target CONTINUE
         fi
         #ebtables -t nat -L
     fi
@@ -228,6 +241,9 @@ rule() {
         # Note that we expect neighbour advertisements to have non-link local
         # source and destination.
         ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d ff02:0:0:0:0:1:ff00::/104 -p ipv6-icmp --icmpv6-type neighbour-solicitation -j RETURN
+        if [ "$GATEWAY6_MAC" ]; then
+            ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -m mark --mark "$MARK_GATEWAY6/$MARK_GATEWAY6" -j RETURN
+        fi
         ip6tables -A "in$TAP_IFNAME" -j REJECT
 
         ip6tables -N "out$TAP_IFNAME"
@@ -241,8 +257,15 @@ rule() {
         # Note that we expect neighbour advertisements to have non-link local
         # source and destination.
         ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$("$UTILS/solip6" "$IP6ADDR")" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j RETURN
+        if [ "$GATEWAY6_MAC" ]; then
+            ip6tables -A "out$TAP_IFNAME" -m mac --mac-source "$GATEWAY6_MAC" -d "$IP6ADDR" -j RETURN
+        fi
         ip6tables -A "out$TAP_IFNAME" -j REJECT
         #ip6tables -L
+
+        if [ "$GATEWAY6_MAC" ]; then
+            ebtables -t nat -A "in$TAP_IFNAME" -d "$GATEWAY6_MAC" -j mark --mark-or "$MARK_GATEWAY6" --mark-target CONTINUE
+        fi
     fi
 
     NOTIFY_PORT="$(config notify_port "$NFDHCP_BINDING_IN")"
