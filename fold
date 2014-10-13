@@ -1,11 +1,6 @@
 #!/bin/bash
 set -e
 
-# TODO:
-# gateway6: linux seems not to setup default route to global even with R flag
-#           need to set up something on weave bridge which can route to outside world
-#           will probably need to relax firewall rules for traffic to/from gateway6mac/gatewaymac
-
 BRIDGE=weave
 TAP_IFNAME=vethfotp$$
 NFDHCP_BINDING_OUT="/var/lib/nfdhcpd/$TAP_IFNAME"
