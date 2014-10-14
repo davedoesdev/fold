@@ -55,6 +55,10 @@ If you don't specify `-k` then your VM's guest OS is assumed to be using [Modifi
 
 ```ini
 HOSTNAME=test
+GATEWAY=10.0.1.90
+GATEWAY_MAC=7a:f4:96:e0:1c:a0
+GATEWAY6=fde5:824d:d315:3bb1::91
+GATEWAY6_MAC=7e:b7:70:3b:81:77
 NAMESERVERS=10.0.1.50
 NAMESERVERS6=fde5:824d:d315:3bb1::1
 ADDRESS:database.=10.0.1.1
@@ -63,6 +67,8 @@ TXT:table.=Users
 ```
 
 Fold will add `IPADDR`, `SUBNET`, `PREFIX` and `IP6ADDR` to the settings in your binding file.
+
+Note that if you define an IPv4 gateway, Fold requires a setting which nfdhcpd doesn't use: `GATEWAY_MAC`. Fold needs the MAC of your gateway in order to make sure traffic coming in and out of the subnet (or prefix for IPv6) goes to the gateway only.
 
 **`<macaddr>`** is a (mandatory) MAC address to give the VM. Note you can use the `utils/lamac` script to generate a random [locally administered address](http://en.wikipedia.org/wiki/MAC_address#Address_details).
 
