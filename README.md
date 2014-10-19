@@ -8,7 +8,7 @@ Run virtual machines on a virtual network created by [Weave](https://github.com/
 - Supports custom configuration data per VM using DNS TXT records. Useful for service discovery in multi-VM applications.
 - Mix docker containers with VMs - they can talk to each other over the same Weave network.
 - Full IPv6 support.
-- Supports [KVM](http://www.linux-kvm.org/page/Main_Page) only at the moment.
+- Supports [KVM](http://www.linux-kvm.org/page/Main_Page) and [Capstan](http://osv.io/capstan/) for lightweight VMs.
 
 The motivation for Fold is to support applications you don't trust enough to run in containers. For example, multi-tenant environments or when you've pulled in many dependencies and haven't audited all the third party modules your application uses.
 
