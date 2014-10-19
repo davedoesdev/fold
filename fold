@@ -12,7 +12,7 @@ UTILS="$(dirname "$0")/utils"
 
 usage() {
     echo "Usage:"
-    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]... [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] [-b <nfdhcp-binding-file>] <macaddr> kvm|capstan [<hypervisor args> ...]"
+    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]... [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] [-b <nfdhcp-binding-file>] <macaddr> kvm|capstan [<hypervisor arg>...]"
     exit 1
 }
 

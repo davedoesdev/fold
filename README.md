@@ -26,7 +26,7 @@ fold [-4 <ipaddr>/<subnet>]
      [-d <rdiscd-img-dir>]
      [-b <nfdhcp-binding-file>]
      <macaddr>
-     kvm <kvm arg>...
+     kvm|capstan [<hypervisor arg>...]
 ```
 
 You should supply at least one of `-4` or `-6`.
@@ -72,7 +72,7 @@ Note that if you define an IPv4 gateway, Fold requires a setting which nfdhcpd d
 
 **`<macaddr>`** is a (mandatory) MAC address to give the VM. Note you can use the `utils/lamac` script to generate a random [locally administered address](http://en.wikipedia.org/wiki/MAC_address#Address_details).
 
-**`<kvm arg>...`** should contain arguments necessary to load your VM, for example `-hda disk.qcow2`.
+**`<hypervisor arg>...`** should contain arguments necessary to load your VM, for example `-hda disk.qcow2` (KVM) or `cloudius/osv` (Capstan).
 
 # Examples
 
