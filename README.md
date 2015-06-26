@@ -14,7 +14,7 @@ The motivation for Fold is to support applications you don't trust enough to run
 
 # Usage
 
-You need to create a Weave network (`weave launch`) before running Fold. Please see the [Weave documentation](https://github.com/zettio/weave) for details.
+You need to create a Weave network (`weave launch`) before running Fold. Please see the [Weave documentation](https://github.com/zettio/weave) for details. Fold doesn't support Weave automatic address allocation so you're best off using [mixed automatic and manual allocation](http://docs.weave.works/weave/latest_release/ipam.html#manual).
 
 Once you've done this, use the `fold` command to run virtual machines on the network:
 
