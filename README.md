@@ -68,7 +68,9 @@ TXT:table.=Users
 
 Fold will add `IPADDR`, `SUBNET`, `PREFIX` and `IP6ADDR` to the settings in your binding file.
 
-Note that if you define an IPv4 gateway, Fold requires a setting which `nfdhcpd` doesn't use: `GATEWAY_MAC`. Fold needs the MAC of your gateway in order to make sure traffic coming in and out of the subnet (or prefix for IPv6) goes to the gateway only.
+Note that if you define an IPv4 gateway, Fold requires a setting which `nfdhcpd` doesn't use: `GATEWAY_MAC`. Fold needs the MAC of your gateway in order to make sure traffic coming in and out of the subnet (or prefix for IPv6) goes via the gateway only.
+
+One way to get a gateway on your Weave network is to use [Weave host network integration](http://docs.weave.works/weave/latest_release/features.html#host-network-integration). Use `weave expose` to get the gateway IP address `weave ps weave:expose` to get the gateway MAC.
 
 **`<macaddr>`** is a (mandatory) MAC address to give the VM. Note you can use the `utils/lamac` script to generate a random [locally administered address](http://en.wikipedia.org/wiki/MAC_address#Address_details).
 
