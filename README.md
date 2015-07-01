@@ -7,7 +7,7 @@ Run virtual machines on a virtual network created by [Weave](https://github.com/
 - Like Weave each subnet is fully isolated &mdash; Fold sets up the necessary firewall rules.
 - Supports custom configuration data per VM using DNS TXT records. Useful for service discovery in multi-VM applications.
 - Mix docker containers with VMs - they can talk to each other over the same Weave network.
-- Inter-operates with weaveDNS: VMs lookup Weave records and containers can lookup Fold records.
+- Interoperates with weaveDNS: VMs lookup Weave records and containers can lookup Fold records.
 - Full IPv6 support.
 - Supports [KVM](http://www.linux-kvm.org/page/Main_Page) and [Capstan](http://osv.io/capstan/) for lightweight VMs.
 
