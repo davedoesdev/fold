@@ -129,6 +129,11 @@ unrule() {
         iptables -t mangle -F "in$TAP_IFNAME"
         iptables -t mangle -X "in$TAP_IFNAME"
     fi
+    if iptables -t mangle -L "out$TAP_IFNAME" >& /dev/null; then
+        iptables -t mangle -D FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        iptables -t mangle -F "out$TAP_IFNAME"
+        iptables -t mangle -X "out$TAP_IFNAME"
+    fi
     if iptables -L "in$TAP_IFNAME" >& /dev/null; then
         iptables -D FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         iptables -F "in$TAP_IFNAME"
@@ -181,6 +186,11 @@ rule() {
         iptables -t mangle -A PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         iptables -t mangle -A "in$TAP_IFNAME" -p udp --dport bootps -j NFQUEUE --queue-num "$DHCP_QUEUE"
         iptables -t mangle -A "in$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS_QUEUE"
+
+        iptables -t mangle -N "out$TAP_IFNAME"
+        iptables -t mangle -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        iptables -t mangle -A "out$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS_QUEUE"
+
         #iptables -t mangle -L
 
         iptables -N "in$TAP_IFNAME"
@@ -367,6 +377,7 @@ untap; tap
   [ "$SUBNET" ] && echo "SUBNET=$SUBNET"
   [ "$PREFIX" ] && echo "SUBNET6=$PREFIX"
   [ "$IP6ADDR" ] && echo "IP6=$IP6ADDR"
+  echo "BRIDGE=$BRIDGE"
   echo "MTU=$MTU"
   cat "$NFDHCP_BINDING_IN" )  > "$NFDHCP_BINDING_OUT"
 

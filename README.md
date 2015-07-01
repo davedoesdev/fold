@@ -7,6 +7,7 @@ Run virtual machines on a virtual network created by [Weave](https://github.com/
 - Like Weave each subnet is fully isolated &mdash; Fold sets up the necessary firewall rules.
 - Supports custom configuration data per VM using DNS TXT records. Useful for service discovery in multi-VM applications.
 - Mix docker containers with VMs - they can talk to each other over the same Weave network.
+- Inter-operates with weaveDNS: VMs lookup Weave records and containers can lookup Fold records.
 - Full IPv6 support.
 - Supports [KVM](http://www.linux-kvm.org/page/Main_Page) and [Capstan](http://osv.io/capstan/) for lightweight VMs.
 
@@ -16,7 +17,9 @@ The motivation for Fold is to support applications you don't trust enough to run
 
 You need to create a Weave network (`weave launch`) before running Fold. Please see the [Weave documentation](https://github.com/zettio/weave) for details. Fold doesn't support Weave automatic address allocation so you're best off using [mixed automatic and manual allocation](http://docs.weave.works/weave/latest_release/ipam.html#manual).
 
-Once you've done this, use the `fold` command to run virtual machines on the network:
+If you want your Weave containers to be able to make DNS queries against Fold, use the Docker `--dns` option when launching your containers. For example, if you're going to run a VM with IP address `10.0.1.100` then use `docker run --dns=10.0.1.100 ...`
+
+Once you've setup your Weave network, use the `fold` command to run virtual machines on the network:
 
 ```shell
 fold [-4 <ipaddr>/<subnet>]
@@ -64,13 +67,20 @@ NAMESERVERS6=fde5:824d:d315:3bb1::1
 ADDRESS:database.=10.0.1.1
 ADDRESS6:database.=fde5:824d:d315:3bb1::9
 TXT:table.=Users
+DNS_NAMESERVERS=172.17.42.1
 ```
 
-Fold will add `IPADDR`, `SUBNET`, `PREFIX` and `IP6ADDR` to the settings in your binding file.
+Fold will add `IPADDR`, `SUBNET`, `PREFIX`, `IP6ADDR` and `BRIDGE` to the settings in your binding file.
 
 Note that if you define an IPv4 gateway, Fold requires a setting which `nfdhcpd` doesn't use: `GATEWAY_MAC`. Fold needs the MAC of your gateway in order to make sure traffic coming in and out of the subnet (or prefix for IPv6) goes via the gateway only.
 
 One way to get a gateway on your Weave network is to use [Weave host network integration](http://docs.weave.works/weave/latest_release/features.html#host-network-integration). Use `weave expose` to get the gateway IP address and `weave ps weave:expose` to get the gateway MAC.
+
+If you want your VM to be able to make queries against weaveDNS, you need to set `DNS_NAMESERVERS` to the IP address of the _Docker_ bridge device (usually `docker0`). Use `ip addr show dev docker0` or `ifconfig docker0` and parse the output to find the IP address. For example:
+
+```shell
+ifconfig docker0 | grep 'inet addr:' | cut -d: -f2  | awk '{ print $1}'
+```
 
 **`<macaddr>`** is a (mandatory) MAC address to give the VM. Note you can use the `utils/lamac` script to generate a random [locally administered address](http://en.wikipedia.org/wiki/MAC_address#Address_details).
 
