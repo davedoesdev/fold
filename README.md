@@ -15,14 +15,37 @@ The motivation for Fold is to support applications you don't trust enough to run
 
 # Usage
 
-You need to create a Weave network (`weave launch`) before running Fold. Please see the [Weave documentation](https://github.com/zettio/weave) for details. Fold doesn't support Weave automatic address allocation so you're best off using [mixed automatic and manual allocation](http://docs.weave.works/weave/latest_release/ipam.html#manual).
+## Setting up Weave network
 
-If you want your Weave containers to be able to make DNS queries against Fold, use the Docker `--dns` option when launching your containers. For example, if you're going to run a VM with IP address `10.0.1.100` then use `docker run --dns=10.0.1.100 ...`
+You need to create a Weave network (`weave launch`) before running Fold. Please see the [Weave documentation](https://github.com/zettio/weave) for details.
+
+Fold supports Weave [automatic IP address management (IPAM)](http://docs.weave.works/weave/latest_release/ipam.html) and [mixed automatic and manual allocation](http://docs.weave.works/weave/latest_release/ipam.html#manual).
+
+When using IPAM, allocate an IP address using:
+
+```shell
+fold -i <iface-name> -4 auto [net:<cidr> | net:default]
+```
+
+You must supply an interface name &mdash; Weave will assign the address to this name. Supply a CIDR if you don't want to use Weave's default subnet. The allocated IP address will be written to standard output.
+
+To release the IP address later, after running your VM, you can use:
+
+```shell
+fold -i <iface-name> -4 release
+```
+
+When using mixed allocation, give your VMs IP addresses from the manual allocation range.
+
+If you want your Weave containers to be able to make DNS queries against Fold, use the Docker `--dns` option when launching your containers. For example, if you're going to run a VM with IP address `10.0.1.100` and want to make DNS queries against it then use `docker run --dns=10.0.1.100 ...`
+
+## Running VMs using Fold
 
 Once you've setup your Weave network, use the `fold` command to run virtual machines on the network:
 
 ```shell
-fold [-4 <ipaddr>/<subnet>]
+fold [-i <iface-name>]
+     [-4 <ipaddr>/<subnet>]
      [-6 <ip6prefix>]
      [-m <multicast-addr>]...
      [-k <rdiscd-keyfile>]
@@ -34,7 +57,9 @@ fold [-4 <ipaddr>/<subnet>]
 
 You should supply at least one of `-4` or `-6`.
 
-**`-4`** gives the VM an IPv4 address and subnet on the Weave network. For example, `-4 10.0.1.100/24`. The VM will be able to communicate with other VMs on the same subnet.
+**`-i`** names the interface created for the VM and attached to the Weave network bridge. If you don't supply one then Fold makes a name up for you. If you're using IPAM then use the same name you used to allocate the IP address.
+
+**`-4`** gives the VM an IPv4 address and subnet on the Weave network. For example, `-4 10.0.1.100/24`. The VM will be able to communicate with other VMs on the same subnet. If you're using IPAM, use the IP allocated to the interface name.
 
 **`-6`** gives the VM an IPv6 address and prefix on the Weave network. For example, `-6 fde5:824d:d315:3bb1::/64`. The VM will be able to communicate with other VMs with the same prefix.
 

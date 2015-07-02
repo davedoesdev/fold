@@ -2,8 +2,8 @@
 set -e
 
 BRIDGE=weave
-TAP_IFNAME=vethfotp$$
-NFDHCP_BINDING_OUT="/var/lib/nfdhcpd/$TAP_IFNAME"
+WEAVE_CONTAINER_NAME=weave
+WEAVE_HTTP_PORT=6784
 NFDHCP_CFG="/etc/nfdhcpd/nfdhcpd.conf"
 MTU=16384 # max TAP MTU
 let "MARK_GATEWAY=1<<0"
@@ -12,7 +12,9 @@ UTILS="$(dirname "$0")/utils"
 
 usage() {
     echo "Usage:"
-    echo "fold [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]... [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] [-b <nfdhcp-binding-file>] <macaddr> kvm|capstan [<hypervisor arg>...]"
+    echo "fold -i <iface-name> -4 auto [net:<cidr> | net:default]"
+    echo "fold -i <iface-name> -4 release"
+    echo "fold [-i <iface-name>]  [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]... [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] [-b <nfdhcp-binding-file>] <macaddr> kvm|capstan [<hypervisor arg>...]"
     exit 1
 }
 
@@ -21,12 +23,12 @@ usage() {
     exit 1
 }
 
-unset IPSUB PREFIX KEYFILE RDISCD_IMG_FILE
+unset IPSUB PREFIX KEYFILE RDISCD_IMG_FILE TAP_IFNAME
 RDISCD_IMG_DIR=.
 MULTI4=()
 MULTI6=()
 NFDHCP_BINDING_IN=/dev/null
-while getopts 4:6:m:k:d:b: opt
+while getopts 4:6:m:k:d:b:i: opt
 do
     case $opt in
         4)
@@ -51,6 +53,9 @@ do
         b)
             NFDHCP_BINDING_IN="$OPTARG"
             ;;
+        i)
+            TAP_IFNAME="$OPTARG"
+            ;;
         *)
             usage
             ;;
@@ -58,6 +63,89 @@ do
 done
 
 shift $((OPTIND-1))
+
+# IPAM functions taken from weave script
+
+IP_REGEXP="[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"
+CIDR_REGEXP="$IP_REGEXP/[0-9]{1,2}"
+
+is_cidr() {
+    echo "$1" | grep -E "^$CIDR_REGEXP$" >/dev/null
+}
+
+container_ip() {
+    if ! status=$(docker inspect --format='{{.State.Running}} {{.NetworkSettings.IPAddress}}' $1 2>/dev/null) ; then
+        echo "$2" >&2
+        return 1
+    fi
+    case "$status" in
+        "true ")
+            echo "$1 container has no IP address; is Docker networking enabled?" >&2
+            return 1
+            ;;
+        true*)
+            CONTAINER_IP="${status#true }"
+            ;;
+        *)
+            echo "$3" >&2
+            return 1
+            ;;
+    esac
+}
+
+http_call_ip() {
+    ip="$1"
+    port="$2"
+    http_verb="$3"
+    url="$4"
+    shift 4
+    curl --connect-timeout 3 -s -S -X $http_verb "$@" http://$ip:$port$url
+}
+
+# Call url $4 with http verb $3 on container $1 at port $2
+http_call() {
+    HTTP_CALL_CONTAINER=$1
+    container_ip $HTTP_CALL_CONTAINER \
+        "$HTTP_CALL_CONTAINER container is not present. Have you launched it?" \
+        "$HTTP_CALL_CONTAINER container is not running." \
+        || return 1
+    shift 1
+    if ! http_call_ip $CONTAINER_IP "$@" ; then
+        echo "Call to $HTTP_CALL_CONTAINER failed." >&2
+        return 1
+    fi
+}
+
+if [ "$IPSUB" = auto ]; then
+    [ -n "$TAP_IFNAME" -a $# -le 1 ] || usage
+    if [ $# -eq 0 -o "$1" = net:default ]; then
+        IPAM_URL="/ip/$TAP_IFNAME"
+    else
+        IPAM_URL="/ip/$TAP_IFNAME/${1#net:}"
+    fi
+    if ! CIDR="$(http_call $WEAVE_CONTAINER_NAME $WEAVE_HTTP_PORT POST "$IPAM_URL")"; then
+        exit 1
+    fi
+    if [ "$CIDR" = "404 page not found" ] ; then
+        echo "IP address allocation must be enabled to use 'net:'" >&2
+        exit 1
+    fi
+    if ! is_cidr "$CIDR" ; then
+        echo "$CIDR" >&2
+        exit 1
+    fi
+    echo "$CIDR"
+    exit
+fi
+
+if [ "$IPSUB" = release ]; then
+    [ -n "$TAP_IFNAME" -a $# -eq 0 ] || usage
+    http_call $WEAVE_CONTAINER_NAME $WEAVE_HTTP_PORT DELETE "/ip/$TAP_IFNAME"
+    exit
+fi
+
+TAP_IFNAME="${TAP_IFNAME:-vethfotp$$}"
+NFDHCP_BINDING_OUT="/var/lib/nfdhcpd/$TAP_IFNAME"
 
 [ $# -gt 1 ] || usage
 
@@ -149,6 +237,11 @@ unrule() {
         ip6tables -t mangle -F "in$TAP_IFNAME"
         ip6tables -t mangle -X "in$TAP_IFNAME"
     fi
+    if ip6tables -t mangle -L "out$TAP_IFNAME" >& /dev/null; then
+        ip6tables -t mangle -D FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        ip6tables -t mangle -F "out$TAP_IFNAME"
+        ip6tables -t mangle -X "out$TAP_IFNAME"
+    fi
     if ip6tables -L "in$TAP_IFNAME" >& /dev/null; then
         ip6tables -D FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         ip6tables -F "in$TAP_IFNAME"
@@ -231,6 +324,11 @@ rule() {
         ip6tables -t mangle -A "in$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS6_QUEUE"
         ip6tables -t mangle -A "in$TAP_IFNAME" -p ipv6-icmp --icmpv6-type router-solicitation -j NFQUEUE --queue-num "$RS_QUEUE"
         ip6tables -t mangle -A "in$TAP_IFNAME" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j NFQUEUE --queue-num "$NS_QUEUE"
+
+        ip6tables -t mangle -N "out$TAP_IFNAME"
+        ip6tables -t mangle -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        ip6tables -t mangle -A "out$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS6_QUEUE"
+
         #ip6tables -t mangle -L
 
         ip6tables -N "in$TAP_IFNAME"
@@ -349,7 +447,7 @@ rule() {
 
 untap() {
     if ip link show dev "$TAP_IFNAME" >& /dev/null; then
-         ip link del dev "$TAP_IFNAME"
+        ip link del dev "$TAP_IFNAME"
     fi
 }
 
