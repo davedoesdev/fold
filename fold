@@ -14,7 +14,12 @@ usage() {
     echo "Usage:"
     echo "fold -i <iface-name> -4 auto [net:<cidr> | net:default]"
     echo "fold -i <iface-name> -4 release"
-    echo "fold [-i <iface-name>]  [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]... [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>] [-b <nfdhcp-binding-file>] <macaddr> kvm|capstan [<hypervisor arg>...]"
+    echo "fold [-i <iface-name>]"
+    echo "     [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]..."
+    echo "     [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>]"
+    echo "     [-b <nfdhcp-binding-file>]"
+    echo "     [-a <iptables-gw-action>] [-A <ip6tables-gw-action>]"
+    echo "     <macaddr> kvm|capstan [<hypervisor arg>...]"
     exit 1
 }
 
@@ -28,7 +33,9 @@ RDISCD_IMG_DIR=.
 MULTI4=()
 MULTI6=()
 NFDHCP_BINDING_IN=/dev/null
-while getopts 4:6:m:k:d:b:i: opt
+GATEWAY_ACTION="-j RETURN"
+GATEWAY6_ACTION="-j RETURN"
+while getopts 4:6:m:k:d:b:i:a:A: opt
 do
     case $opt in
         4)
@@ -55,6 +62,12 @@ do
             ;;
         i)
             TAP_IFNAME="$OPTARG"
+            ;;
+        a)
+            GATEWAY_ACTION="$OPTARG"
+            ;;
+        A)
+            GATEWAY6_ACTION="$OPTARG"
             ;;
         *)
             usage
@@ -173,7 +186,9 @@ DNS6_QUEUE="$(config dns6_queue "$NFDHCP_CFG")"
 NOTIFY_QUEUE="$(config notify_queue "$NFDHCP_CFG")"
 NOTIFY6_QUEUE="$(config notify6_queue "$NFDHCP_CFG")"
 NAMESERVER="$(config1 nameservers "$NFDHCP_BINDING_IN")"
+GATEWAY="$(config gateway "$NFDHCP_BINDING_IN")"
 GATEWAY_MAC="$(config gateway_mac "$NFDHCP_BINDING_IN")"
+GATEWAY6="$(config gateway6 "$NFDHCP_BINDING_IN")"
 GATEWAY6_MAC="$(config gateway6_mac "$NFDHCP_BINDING_IN")"
 
 if [ "$IPSUB" ]; then
@@ -224,11 +239,14 @@ unrule() {
     fi
     if iptables -L "in$TAP_IFNAME" >& /dev/null; then
         iptables -D FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        iptables -D INPUT -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         iptables -F "in$TAP_IFNAME"
         iptables -X "in$TAP_IFNAME"
     fi
     if iptables -L "out$TAP_IFNAME" >& /dev/null; then
         iptables -D FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        iptables -D FORWARD -o "$BRIDGE" -d "$IPADDR" -j "out$TAP_IFNAME"
+        iptables -D OUTPUT -o "$BRIDGE" -d "$IPADDR" -j "out$TAP_IFNAME"
         iptables -F "out$TAP_IFNAME"
         iptables -X "out$TAP_IFNAME"
     fi
@@ -243,12 +261,15 @@ unrule() {
         ip6tables -t mangle -X "out$TAP_IFNAME"
     fi
     if ip6tables -L "in$TAP_IFNAME" >& /dev/null; then
+        ip6tables -D INPUT -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         ip6tables -D FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         ip6tables -F "in$TAP_IFNAME"
         ip6tables -X "in$TAP_IFNAME"
     fi
     if ip6tables -L "out$TAP_IFNAME" >& /dev/null; then
         ip6tables -D FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        ip6tables -D FORWARD -o "$BRIDGE" -d "$IP6ADDR" -j "out$TAP_IFNAME"
+        ip6tables -D OUTPUT -o "$BRIDGE" -d "$IP6ADDR" -j "out$TAP_IFNAME"
         ip6tables -F "out$TAP_IFNAME"
         ip6tables -X "out$TAP_IFNAME"
     fi
@@ -272,40 +293,44 @@ unrule() {
 
 rule() {
     ebtables -t nat -N "in$TAP_IFNAME" -P RETURN
-    ebtables -t nat -A PREROUTING -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
+    ebtables -t nat -I PREROUTING -i "$TAP_IFNAME" -j "in$TAP_IFNAME"
 
     if [ "$IPSUB" ]; then
         iptables -t mangle -N "in$TAP_IFNAME"
-        iptables -t mangle -A PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        iptables -t mangle -I PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         iptables -t mangle -A "in$TAP_IFNAME" -p udp --dport bootps -j NFQUEUE --queue-num "$DHCP_QUEUE"
         iptables -t mangle -A "in$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS_QUEUE"
 
         iptables -t mangle -N "out$TAP_IFNAME"
-        iptables -t mangle -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        iptables -t mangle -I FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
         iptables -t mangle -A "out$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS_QUEUE"
 
         #iptables -t mangle -L
 
         iptables -N "in$TAP_IFNAME"
-        iptables -A FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        iptables -I FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        iptables -I INPUT -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        if [ "$GATEWAY_MAC" ]; then
+            iptables -A "in$TAP_IFNAME" -s "$IPADDR" -m mark --mark "$MARK_GATEWAY/$MARK_GATEWAY" $GATEWAY_ACTION
+        fi
         iptables -A "in$TAP_IFNAME" -s "$IPADDR" -d "$SUBNET" -j RETURN
         for addr in "${MULTI4[@]}"; do
             iptables -A "in$TAP_IFNAME" -s "$IPADDR" -d "$addr" -j RETURN
         done
-        if [ "$GATEWAY_MAC" ]; then
-            iptables -A "in$TAP_IFNAME" -s "$IPADDR" -m mark --mark "$MARK_GATEWAY/$MARK_GATEWAY" -j RETURN
-        fi
         iptables -A "in$TAP_IFNAME" -j REJECT
 
         iptables -N "out$TAP_IFNAME"
-        iptables -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        iptables -I FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        iptables -I FORWARD -o "$BRIDGE" -d "$IPADDR" -j "out$TAP_IFNAME"
+        iptables -I OUTPUT -o "$BRIDGE" -d "$IPADDR" -j "out$TAP_IFNAME"
+        if [ "$GATEWAY" ]; then
+            iptables -A "out$TAP_IFNAME" ! -s "$SUBNET" -d "$IPADDR" $GATEWAY_ACTION
+            iptables -A "out$TAP_IFNAME" -s "$GATEWAY" -d "$IPADDR" $GATEWAY_ACTION
+        fi
         iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$IPADDR" -j RETURN
         for addr in "${MULTI4[@]}"; do
             iptables -A "out$TAP_IFNAME" -s "$SUBNET" -d "$addr" -j RETURN
         done
-        if [ "$GATEWAY_MAC" ]; then
-            iptables -A "out$TAP_IFNAME" -m mac --mac-source "$GATEWAY_MAC" -d "$IPADDR" -j RETURN
-        fi
         iptables -A "out$TAP_IFNAME" -j REJECT
         #iptables -L
 
@@ -320,19 +345,23 @@ rule() {
 
     if [ "$PREFIX" ]; then
         ip6tables -t mangle -N "in$TAP_IFNAME"
-        ip6tables -t mangle -A PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ip6tables -t mangle -I PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
         ip6tables -t mangle -A "in$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS6_QUEUE"
         ip6tables -t mangle -A "in$TAP_IFNAME" -p ipv6-icmp --icmpv6-type router-solicitation -j NFQUEUE --queue-num "$RS_QUEUE"
         ip6tables -t mangle -A "in$TAP_IFNAME" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j NFQUEUE --queue-num "$NS_QUEUE"
 
         ip6tables -t mangle -N "out$TAP_IFNAME"
-        ip6tables -t mangle -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        ip6tables -t mangle -I FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
         ip6tables -t mangle -A "out$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS6_QUEUE"
 
         #ip6tables -t mangle -L
 
         ip6tables -N "in$TAP_IFNAME"
-        ip6tables -A FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ip6tables -I FORWARD -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        ip6tables -I INPUT -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        if [ "$GATEWAY6_MAC" ]; then
+            ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -m mark --mark "$MARK_GATEWAY6/$MARK_GATEWAY6" $GATEWAY6_ACTION
+        fi
         ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$PREFIX" -j RETURN
         for addr in "${MULTI6[@]}"; do
             ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d "$addr" -j RETURN
@@ -344,13 +373,16 @@ rule() {
         # Note that we expect neighbour advertisements to have non-link local
         # source and destination.
         ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -d ff02:0:0:0:0:1:ff00::/104 -p ipv6-icmp --icmpv6-type neighbour-solicitation -j RETURN
-        if [ "$GATEWAY6_MAC" ]; then
-            ip6tables -A "in$TAP_IFNAME" -s "$IP6ADDR" -m mark --mark "$MARK_GATEWAY6/$MARK_GATEWAY6" -j RETURN
-        fi
         ip6tables -A "in$TAP_IFNAME" -j REJECT
 
         ip6tables -N "out$TAP_IFNAME"
-        ip6tables -A FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        ip6tables -I FORWARD -m physdev --physdev-is-bridged --physdev-out "$TAP_IFNAME" -j "out$TAP_IFNAME"
+        ip6tables -I FORWARD -o "$BRIDGE" -d "$IP6ADDR" -j "out$TAP_IFNAME"
+        ip6tables -I OUTPUT -o "$BRIDGE" -d "$IP6ADDR" -j "out$TAP_IFNAME"
+        if [ "$GATEWAY6_MAC" ]; then
+            ip6tables -A "out$TAP_IFNAME" ! -s "$PREFIX" -d "$IP6ADDR" $GATEWAY6_ACTION
+            ip6tables -A "out$TAP_IFNAME" -s "$GATEWAY" -d "$IP6ADDR" $GATEWAY6_ACTION
+        fi
         ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$IP6ADDR" -j RETURN
         for addr in "${MULTI6[@]}"; do
             ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$addr" -j RETURN
@@ -360,9 +392,6 @@ rule() {
         # Note that we expect neighbour advertisements to have non-link local
         # source and destination.
         ip6tables -A "out$TAP_IFNAME" -s "$PREFIX" -d "$("$UTILS/solip6" "$IP6ADDR")" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j RETURN
-        if [ "$GATEWAY6_MAC" ]; then
-            ip6tables -A "out$TAP_IFNAME" -m mac --mac-source "$GATEWAY6_MAC" -d "$IP6ADDR" -j RETURN
-        fi
         ip6tables -A "out$TAP_IFNAME" -j REJECT
         #ip6tables -L
 

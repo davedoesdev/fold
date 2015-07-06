@@ -51,6 +51,8 @@ fold [-i <iface-name>]
      [-k <rdiscd-keyfile>]
      [-d <rdiscd-img-dir>]
      [-b <nfdhcp-binding-file>]
+     [-a <iptables-gw-action>]
+     [-A <ip6tables-gw-action>]
      <macaddr>
      kvm|capstan [<hypervisor arg>...]
 ```
@@ -106,6 +108,10 @@ If you want your VM to be able to make queries against weaveDNS, you need to set
 ```shell
 ifconfig docker0 | grep 'inet addr:' | cut -d: -f2  | awk '{ print $1}'
 ```
+
+**`-a`** specifies the `iptables` action to take for packets outside the subnet coming from or going to the VM's IP address (via the gateway, if you defined one). The default is `-a "-j RETURN"` (resume with non-Fold processing) but you can use `-a "-g ..."` or `-a "-j ..."` to continue processing using a chain you've defined.
+
+**`-A`** does the same as `-a` but for `ip6tables` and IPv6 packets.
 
 **`<macaddr>`** is a (mandatory) MAC address to give the VM. Note you can use the `utils/lamac` script to generate a random [locally administered address](http://en.wikipedia.org/wiki/MAC_address#Address_details).
 
