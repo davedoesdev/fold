@@ -46,9 +46,9 @@ do
             ;;
         m)
             if [[ "$OPTARG" == *.* ]]; then
-                MULTI4+=("$OPTARG")
+                MULTI4=("${MULTI4[@]}" "$OPTARG")
             else
-                MULTI6+=("$OPTARG")
+                MULTI6=("${MULTI6[@]}" "$OPTARG")
             fi
             ;;
         k)
