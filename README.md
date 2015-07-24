@@ -50,7 +50,7 @@ fold [-i <iface-name>]
      [-m <multicast-addr>]...
      [-k <rdiscd-keyfile>]
      [-d <rdiscd-img-dir>]
-     [-b <nfdhcp-binding-file>]
+     [-b <nfdhcpd-binding-file>]
      [-a <iptables-gw-action>]
      [-A <ip6tables-gw-action>]
      <macaddr>

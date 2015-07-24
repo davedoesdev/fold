@@ -4,7 +4,7 @@ set -e
 BRIDGE=weave
 WEAVE_CONTAINER_NAME=weave
 WEAVE_HTTP_PORT=6784
-NFDHCP_CFG="/etc/nfdhcpd/nfdhcpd.conf"
+NFDHCPD_CFG="${NFDHCPD_CFG:-/etc/nfdhcpd/nfdhcpd.conf}"
 MTU=16384 # max TAP MTU
 let "MARK_GATEWAY=1<<0"
 let "MARK_GATEWAY6=1<<1"
@@ -17,7 +17,7 @@ usage() {
     echo "fold [-i <iface-name>]"
     echo "     [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]..."
     echo "     [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>]"
-    echo "     [-b <nfdhcp-binding-file>]"
+    echo "     [-b <nfdhcpd-binding-file>]"
     echo "     [-a <iptables-gw-action>] [-A <ip6tables-gw-action>]"
     echo "     <macaddr> kvm|capstan [<hypervisor arg>...]"
     exit 1
@@ -32,7 +32,7 @@ unset IPSUB PREFIX KEYFILE RDISCD_IMG_FILE TAP_IFNAME
 RDISCD_IMG_DIR=.
 MULTI4=()
 MULTI6=()
-NFDHCP_BINDING_IN=/dev/null
+NFDHCPD_BINDING_IN=/dev/null
 GATEWAY_ACTION="-j RETURN"
 GATEWAY6_ACTION="-j RETURN"
 while getopts 4:6:m:k:d:b:i:a:A: opt
@@ -58,7 +58,7 @@ do
             RDISCD_IMG_DIR="$OPTARG"
             ;;
         b)
-            NFDHCP_BINDING_IN="$OPTARG"
+            NFDHCPD_BINDING_IN="$OPTARG"
             ;;
         i)
             TAP_IFNAME="$OPTARG"
@@ -158,7 +158,7 @@ if [ "$IPSUB" = release ]; then
 fi
 
 TAP_IFNAME="${TAP_IFNAME:-vethfotp$$}"
-NFDHCP_BINDING_OUT="/var/lib/nfdhcpd/$TAP_IFNAME"
+NFDHCPD_BINDING_OUT="/var/lib/nfdhcpd/$TAP_IFNAME"
 
 [ $# -gt 1 ] || usage
 
@@ -178,18 +178,18 @@ config1() {
     config "$1" "$2" | sed 's/,.*$//' | trim
 }
 
-DHCP_QUEUE="$(config dhcp_queue "$NFDHCP_CFG")"
-RS_QUEUE="$(config rs_queue "$NFDHCP_CFG")"
-NS_QUEUE="$(config ns_queue "$NFDHCP_CFG")"
-DNS_QUEUE="$(config dns_queue "$NFDHCP_CFG")"
-DNS6_QUEUE="$(config dns6_queue "$NFDHCP_CFG")"
-NOTIFY_QUEUE="$(config notify_queue "$NFDHCP_CFG")"
-NOTIFY6_QUEUE="$(config notify6_queue "$NFDHCP_CFG")"
-NAMESERVER="$(config1 nameservers "$NFDHCP_BINDING_IN")"
-GATEWAY="$(config gateway "$NFDHCP_BINDING_IN")"
-GATEWAY_MAC="$(config gateway_mac "$NFDHCP_BINDING_IN")"
-GATEWAY6="$(config gateway6 "$NFDHCP_BINDING_IN")"
-GATEWAY6_MAC="$(config gateway6_mac "$NFDHCP_BINDING_IN")"
+DHCP_QUEUE="$(config dhcp_queue "$NFDHCPD_CFG")"
+RS_QUEUE="$(config rs_queue "$NFDHCPD_CFG")"
+NS_QUEUE="$(config ns_queue "$NFDHCPD_CFG")"
+DNS_QUEUE="$(config dns_queue "$NFDHCPD_CFG")"
+DNS6_QUEUE="$(config dns6_queue "$NFDHCPD_CFG")"
+NOTIFY_QUEUE="$(config notify_queue "$NFDHCPD_CFG")"
+NOTIFY6_QUEUE="$(config notify6_queue "$NFDHCPD_CFG")"
+NAMESERVER="$(config1 nameservers "$NFDHCPD_BINDING_IN")"
+GATEWAY="$(config gateway "$NFDHCPD_BINDING_IN")"
+GATEWAY_MAC="$(config gateway_mac "$NFDHCPD_BINDING_IN")"
+GATEWAY6="$(config gateway6 "$NFDHCPD_BINDING_IN")"
+GATEWAY6_MAC="$(config gateway6_mac "$NFDHCPD_BINDING_IN")"
 
 if [ "$IPSUB" ]; then
     # extract the IP address from an ipaddr/subnet spec
@@ -400,10 +400,10 @@ rule() {
         fi
     fi
 
-    NOTIFY_PORT="$(config notify_port "$NFDHCP_BINDING_IN")"
+    NOTIFY_PORT="$(config notify_port "$NFDHCPD_BINDING_IN")"
     if [ "$NOTIFY_PORT" ]; then
         if [ "$IPSUB" ]; then
-            NOTIFY_IP="$(config notify_ip "$NFDHCP_BINDING_IN")"
+            NOTIFY_IP="$(config notify_ip "$NFDHCPD_BINDING_IN")"
             if [ "$NOTIFY_IP" ]; then
                 iptables -t mangle -A "in$TAP_IFNAME" -p udp -d "$NOTIFY_IP" --dport "$NOTIFY_PORT" -j NFQUEUE --queue-num "$NOTIFY_QUEUE"
                 iptables -t mangle -A "in$TAP_IFNAME" -p udp --dport "$NOTIFY_PORT" -j DROP
@@ -414,7 +414,7 @@ rule() {
             fi
         fi
         if [ "$PREFIX" ]; then
-            NOTIFY_IP6="$(config notify_ip6 "$NFDHCP_BINDING_IN")"
+            NOTIFY_IP6="$(config notify_ip6 "$NFDHCPD_BINDING_IN")"
             if [ "$NOTIFY_IP6" ]; then
                 ip6tables -t mangle -A "in$TAP_IFNAME" -p udp -d "$NOTIFY_IP6" --dport "$NOTIFY_PORT" -j NFQUEUE --queue-num "$NOTIFY6_QUEUE"
                 ip6tables -t mangle -A "in$TAP_IFNAME" -p udp --dport "$NOTIFY_PORT" -j DROP
@@ -490,7 +490,7 @@ tap() {
 cleanup() {
     trap - EXIT
     untap; unrule
-    rm -f "$NFDHCP_BINDING_OUT"
+    rm -f "$NFDHCPD_BINDING_OUT"
     [ "$RDISCD_IMG_FILE" ] && sudo -u "${SUDO_USER:-root}" rm -f "$RDISCD_IMG_FILE"
 }
 
@@ -506,7 +506,7 @@ untap; tap
   [ "$IP6ADDR" ] && echo "IP6=$IP6ADDR"
   echo "BRIDGE=$BRIDGE"
   echo "MTU=$MTU"
-  cat "$NFDHCP_BINDING_IN" )  > "$NFDHCP_BINDING_OUT"
+  cat "$NFDHCPD_BINDING_IN" )  > "$NFDHCPD_BINDING_OUT"
 
 case "$COMMAND" in
     kvm)
