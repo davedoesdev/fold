@@ -67,12 +67,12 @@ You should supply at least one of `-4` or `-6`.
 
 **`-m`** allows the VM to receive IPv4 or IPv6 multicast packets for a given address. You can repeat `-m` more than once, for example `-m 239.1.2.3 -m ff3e::4321:1234`.
 
-**`-k`** specifies that the VM should use an IPv6 [RFC 7217](https://tools.ietf.org/html/rfc7217) stable privacy address. Fold uses [rdiscd](https://github.com/AGWA/rdiscd) to generate the address. `rdiskd-mkaddress` should be available in your `PATH`.
+**`-k`** specifies that the VM should use an IPv6 [RFC 7217](https://tools.ietf.org/html/rfc7217) stable privacy address. Fold uses [rdiscd](https://github.com/AGWA/rdiscd) to generate the address. `rdiscd-mkaddress` should be available in your `PATH`.
 
-The argument to `-k` is the file containing the secret key used to generate the stable privacy address. Fold puts the stable privacy address into a file called `interface-id` on a temporary ext2fs disk image. The path to the image file will be substituted for `[rdisk_img_file]` in the rest of the arguments. For example:
+The argument to `-k` is the file containing the secret key used to generate the stable privacy address. Fold puts the stable privacy address into a file called `interface-id` on a temporary ext2fs disk image. The path to the image file will be substituted for `_rdiscd_img_file_` in the rest of the arguments. For example:
 
 ```shell
-fold ... -k keyfile ... kvm -fda [rdisk_img_file]
+fold ... -k keyfile ... kvm -fda _rdiscd_img_file_
 ```
 
 Note that Fold doesn't support IPv6 [RFC 4941](http://tools.ietf.org/html/rfc4941) temporary addresses so you should disable these in your VM's guest operating system.
@@ -128,5 +128,5 @@ fold -4 10.0.1.100/24 -6 fde5:824d:d315:3bb1::/64 -b test-binding 52:54:00:12:34
 Run a Ubuntu VM on the Weave network, with IPv4 and IPv6 unicast and multicast addresses (IPv6 unicast address using stable privacy):
 
 ```shell
-fold -4 10.0.1.100/24 -6 fde5:824d:d315:3bb1::/64 -k keyfile -m 239.1.2.3 -b test-binding 52:54:00:12:34:56 kvm -hda ubuntu.qcow2 -fda [rdisk_img_file]
+fold -4 10.0.1.100/24 -6 fde5:824d:d315:3bb1::/64 -k keyfile -m 239.1.2.3 -b test-binding 52:54:00:12:34:56 kvm -hda ubuntu.qcow2 -fda _rdiscd_img_file_
 ```

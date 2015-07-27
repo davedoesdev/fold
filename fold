@@ -183,7 +183,7 @@ run_prog() {
     if command -v sudo >& /dev/null; then
         sudo -u "$user" "$@"
     else
-        su --preserve-environment -l -c 'exec "$0" "$@"' "$user" "$@"
+        su --preserve-environment -l -c 'exec "$0" "$@"' "$user" -- "$@"
     fi
 }
 
@@ -517,7 +517,7 @@ untap; tap
   echo "MTU=$MTU"
   cat "$NFDHCPD_BINDING_IN" )  > "$NFDHCPD_BINDING_OUT"
 
-args=("${@//\[rdisk_img_file\]/$RDISCD_IMG_FILE}")
+args=("${@//_rdiscd_img_file_/$RDISCD_IMG_FILE}")
 
 case "$COMMAND" in
     kvm)
