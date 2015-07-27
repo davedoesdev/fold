@@ -178,6 +178,15 @@ config1() {
     config "$1" "$2" | sed 's/,.*$//' | trim
 }
 
+run_prog() {
+    local user="${SUDO_USER:-root}"
+    if command -v sudo >& /dev/null; then
+        sudo -u "$user" "$@"
+    else
+        su --preserve-environment -l -c 'exec "$0" "$@"' "$user" "$@"
+    fi
+}
+
 DHCP_QUEUE="$(config dhcp_queue "$NFDHCPD_CFG")"
 RS_QUEUE="$(config rs_queue "$NFDHCPD_CFG")"
 NS_QUEUE="$(config ns_queue "$NFDHCPD_CFG")"
@@ -212,9 +221,9 @@ if [ "$PREFIX" ]; then
         # to be able to know which IPv6 address relates to a MAC address.
         IP6ADDR="$(rdiscd-mkaddress -m "$MACADDR" -k "$KEYFILE" "$PREFIX" stable-privacy)"
         RDISCD_IMG_FILE="$RDISCD_IMG_DIR/rdiscd_$TAP_IFNAME.img"
-        sudo -u "${SUDO_USER:-root}" genext2fs -b 1440 "$RDISCD_IMG_FILE"
-        echo "::$("$UTILS/exp6" "$IP6ADDR" 16 8)" | sudo -u "${SUDO_USER:-root}" e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id"
-        echo 64 | sudo -u "${SUDO_USER:-root}" e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id-len"
+        run_prog genext2fs -b 1440 "$RDISCD_IMG_FILE"
+        echo "::$("$UTILS/exp6" "$IP6ADDR" 16 8)" | run_prog e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id"
+        echo 64 | run_prog e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id-len"
     else
         # Assume guest uses EUI-64.
         IP6ADDR="$("$UTILS/exp6" "$PREFIX" 8):$("$UTILS/eui-64" "$MACADDR")"
@@ -491,7 +500,7 @@ cleanup() {
     trap - EXIT
     untap; unrule
     rm -f "$NFDHCPD_BINDING_OUT"
-    [ "$RDISCD_IMG_FILE" ] && sudo -u "${SUDO_USER:-root}" rm -f "$RDISCD_IMG_FILE"
+    [ "$RDISCD_IMG_FILE" ] && run_prog rm -f "$RDISCD_IMG_FILE"
 }
 
 trap cleanup EXIT # bash calls cleanup when exiting due to signals too
@@ -508,12 +517,14 @@ untap; tap
   echo "MTU=$MTU"
   cat "$NFDHCPD_BINDING_IN" )  > "$NFDHCPD_BINDING_OUT"
 
+args=("${@//\[rdisk_img_file\]/$RDISCD_IMG_FILE}")
+
 case "$COMMAND" in
     kvm)
-        sudo -u "${SUDO_USER:-root}" kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "${@//\[rdisk_img_file\]/$RDISCD_IMG_FILE}"
+        run_prog kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "${args[@]}"
         ;;
     capstan)
-        sudo -u "${SUDO_USER:-root}" capstan run -n tap -b "$TAP_IFNAME" --mac "$MACADDR" "${@//\[rdisk_img_file\]/$RDISCD_IMG_FILE}"
+        run_prog capstan run -n tap -b "$TAP_IFNAME" --mac "$MACADDR" "${args[@]}"
         ;;
     *)
         echo "Unknown fold command '$COMMAND'" >&2
