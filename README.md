@@ -117,6 +117,16 @@ ifconfig docker0 | grep 'inet addr:' | cut -d: -f2  | awk '{ print $1}'
 
 **`<hypervisor arg>...`** should contain arguments necessary to load your VM, for example `-hda disk.qcow2` (KVM) or `cloudius/osv` (Capstan).
 
+## Environment variables
+
+Fold uses `iptables`, `ip6tables` and `ebtables`. To change how Fold invokes these commands, set the `IPTABLES`, `IP6TABLES` and `EBTABLES` environment variables respectively. For example, to support concurrent use:
+
+```shell
+IPTABLES='iptables --wait' IP6TABLES='ip6tables --wait' EBTABLES='ebtables --concurrent' fold ...
+```
+
+By default, Fold expects to find the global `nfdhcpd` configuration file at `/etc/nfdhcpd/nfdhcpd.conf`. You can override this by setting `NFDHCPD_CFG`.
+
 # Examples
 
 Run a Ubuntu VM on the Weave network, with IPv4 and IPv6 addresses (IPv6 using EUI-64):
