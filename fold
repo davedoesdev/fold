@@ -393,7 +393,7 @@ rule() {
         $IP6TABLES -I OUTPUT -o "$BRIDGE" -d "$IP6ADDR" -j "out$TAP_IFNAME"
         if [ "$GATEWAY6_MAC" ]; then
             $IP6TABLES -A "out$TAP_IFNAME" ! -s "$PREFIX" -d "$IP6ADDR" $GATEWAY6_ACTION
-            $IP6TABLES -A "out$TAP_IFNAME" -s "$GATEWAY" -d "$IP6ADDR" $GATEWAY6_ACTION
+            $IP6TABLES -A "out$TAP_IFNAME" -s "$GATEWAY6" -d "$IP6ADDR" $GATEWAY6_ACTION
         fi
         $IP6TABLES -A "out$TAP_IFNAME" -s "$PREFIX" -d "$IP6ADDR" -j RETURN
         for addr in "${MULTI6[@]}"; do
