@@ -191,6 +191,7 @@ run_prog() {
 }
 
 DHCP_QUEUE="$(config dhcp_queue "$NFDHCPD_CFG")"
+DHCP6_QUEUE="$(config dhcp6_queue "$NFDHCPD_CFG")"
 RS_QUEUE="$(config rs_queue "$NFDHCPD_CFG")"
 NS_QUEUE="$(config ns_queue "$NFDHCPD_CFG")"
 DNS_QUEUE="$(config dns_queue "$NFDHCPD_CFG")"
@@ -358,6 +359,7 @@ rule() {
     if [ "$PREFIX" ]; then
         $IP6TABLES -t mangle -N "in$TAP_IFNAME"
         $IP6TABLES -t mangle -I PREROUTING -m physdev --physdev-in "$TAP_IFNAME" -j "in$TAP_IFNAME"
+        $IP6TABLES -t mangle -A "in$TAP_IFNAME" -p udp --dport dhcpv6-server -j NFQUEUE --queue-num "$DHCP6_QUEUE"
         $IP6TABLES -t mangle -A "in$TAP_IFNAME" -p udp --dport domain -j NFQUEUE --queue-num "$DNS6_QUEUE"
         $IP6TABLES -t mangle -A "in$TAP_IFNAME" -p ipv6-icmp --icmpv6-type router-solicitation -j NFQUEUE --queue-num "$RS_QUEUE"
         $IP6TABLES -t mangle -A "in$TAP_IFNAME" -p ipv6-icmp --icmpv6-type neighbour-solicitation -j NFQUEUE --queue-num "$NS_QUEUE"
