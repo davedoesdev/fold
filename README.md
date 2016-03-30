@@ -9,7 +9,7 @@ Run virtual machines on a virtual network created by [Weave](https://github.com/
 - Mix docker containers with VMs - they can talk to each other over the same Weave network.
 - Interoperates with weaveDNS: VMs can lookup Weave records and containers can lookup Fold records.
 - Full IPv6 support.
-- Supports [KVM](http://www.linux-kvm.org/page/Main_Page) and [Capstan](http://osv.io/capstan/) for lightweight VMs.
+- Supports [KVM](http://www.linux-kvm.org/page/Main_Page) and [Rumprun](https://github.com/rumpkernel/rumprun) for lightweight VMs.
 
 The motivation for Fold is to support applications you don't trust enough to run in containers. For example, multi-tenant environments or when you've pulled in many dependencies and haven't audited all the third party modules your application uses.
 
@@ -47,6 +47,7 @@ Once you've setup your Weave network, use the `fold` command to run virtual mach
 fold [-i <iface-name>]
      [-4 <ipaddr>/<subnet>]
      [-6 <ip6prefix>]
+     [-s]
      [-m <multicast-addr>]...
      [-k <rdiscd-keyfile>]
      [-d <rdiscd-img-dir>]
@@ -54,7 +55,7 @@ fold [-i <iface-name>]
      [-a <iptables-gw-action>]
      [-A <ip6tables-gw-action>]
      <macaddr>
-     kvm|capstan [<hypervisor arg>...]
+     kvm|qemu-system-* [<hypervisor arg>...]
 ```
 
 You should supply at least one of `-4` or `-6`.
@@ -63,7 +64,9 @@ You should supply at least one of `-4` or `-6`.
 
 **`-4`** gives the VM an IPv4 address and subnet on the Weave network. For example, `-4 10.0.1.100/24`. The VM will be able to communicate with other VMs on the same subnet. If you're using IPAM, use the IP allocated to the interface name.
 
-**`-6`** gives the VM an IPv6 address and prefix on the Weave network. For example, `-6 fde5:824d:d315:3bb1::/64`. The VM will be able to communicate with other VMs with the same prefix.
+**`-6`** gives the VM an IPv6 address and prefix on the Weave network. For example, `-6 fde5:824d:d315:3bb1::/64`. The VM will be able to communicate with other VMs with the same prefix. Your VM's guest OS is assumed to be using [Modified EUI-64](http://tools.ietf.org/html/rfc4291#section-2.5.1), unless you specify the `-s` or `-k` options.
+
+**`-s`** sets the VM's IPv6 address to the full 128-bit value you specified with `-6` (i.e. with the prefix specifier removed).
 
 **`-m`** allows the VM to receive IPv4 or IPv6 multicast packets for a given address. You can repeat `-m` more than once, for example `-m 239.1.2.3 -m ff3e::4321:1234`.
 
@@ -77,9 +80,7 @@ fold ... -k keyfile ... kvm -fda _rdiscd_img_file_
 
 Note that Fold doesn't support IPv6 [RFC 4941](http://tools.ietf.org/html/rfc4941) temporary addresses so you should disable these in your VM's guest operating system.
 
-If you don't specify `-k` then your VM's guest OS is assumed to be using [Modified EUI-64](http://tools.ietf.org/html/rfc4291#section-2.5.1).
-
-**`-d`** specifies the directory in which to write the temporary disk image file (only if `-k` is specified). Defaults to the current directory.
+**`-d`** specifies the directory in which to write the file containing the stable privacy address (only if `-k` is specified). Defaults to the current directory.
 
 **`-b`** specifies a binding file containing configuration data for `nfdhcpd`. It will be used by `nfdhcpd` to supply information such as a hostname and DNS address and TXT records to the VM's guest OS. Please see the [nfdhcpd documentation](https://github.com/davedoesdev/nfdhcpd) for more information. Here's an example:
 
@@ -106,7 +107,7 @@ One way to get a gateway on your Weave network is to use [Weave host network int
 If you want your VM to be able to make queries against weaveDNS, you need to set `DNS_NAMESERVERS` to the IP address of the _Docker_ bridge device (usually `docker0`). Use `ip addr show dev docker0` or `ifconfig docker0` and parse the output to find the IP address. For example:
 
 ```shell
-ifconfig docker0 | grep 'inet addr:' | cut -d: -f2  | awk '{ print $1}'
+ifconfig docker0 | grep 'inet addr:' | cut -d: -f2  | awk '{print $1}'
 ```
 
 **`-a`** specifies the `iptables` action to take for packets outside the subnet coming from or going to the VM's IP address (via the gateway, if you defined one). The default is `-a "-j RETURN"` (resume with non-Fold processing) but you can use `-a "-g ..."` or `-a "-j ..."` to continue processing using a chain you've defined.
@@ -115,7 +116,9 @@ ifconfig docker0 | grep 'inet addr:' | cut -d: -f2  | awk '{ print $1}'
 
 **`<macaddr>`** is a (mandatory) MAC address to give the VM. Note you can use the `utils/lamac` script to generate a random [locally administered address](http://en.wikipedia.org/wiki/MAC_address#Address_details).
 
-**`<hypervisor arg>...`** should contain arguments necessary to load your VM, for example `-hda disk.qcow2` (KVM) or `cloudius/osv` (Capstan).
+**`<hypervisor arg>...`** should contain arguments necessary to load your VM, for example:
+  - `-hda disk.qcow2` (KVM)
+  - `-kernel myrumpkernel.bin -append '{"net": {"if": "vioif0",, "type": "inet",, "method":"dhcp"},, "cmdline": "myapp"}'` (Rumprun).
 
 ## Environment variables
 

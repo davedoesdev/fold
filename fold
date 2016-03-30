@@ -18,11 +18,11 @@ usage() {
     echo "fold -i <iface-name> -4 auto [net:<cidr> | net:default]"
     echo "fold -i <iface-name> -4 release"
     echo "fold [-i <iface-name>]"
-    echo "     [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-m <multicast-addr>]..."
+    echo "     [-4 <ipaddr>/<subnet>] [-6 <ip6prefix>] [-s] [-m <multicast-addr>]..."
     echo "     [-k <rdiscd-keyfile>] [-d <rdiscd-img-dir>]"
     echo "     [-b <nfdhcpd-binding-file>]"
     echo "     [-a <iptables-gw-action>] [-A <ip6tables-gw-action>]"
-    echo "     <macaddr> kvm|capstan [<hypervisor arg>...]"
+    echo "     <macaddr> kvm|qemu-system-* <hypervisor arg>..."
     exit 1
 }
 
@@ -31,14 +31,14 @@ usage() {
     exit 1
 }
 
-unset IPSUB PREFIX KEYFILE RDISCD_IMG_FILE TAP_IFNAME
+unset IPSUB PREFIX PREFIX_AS_ADDR KEYFILE RDISCD_IMG_FILE TAP_IFNAME
 RDISCD_IMG_DIR=.
 MULTI4=()
 MULTI6=()
 NFDHCPD_BINDING_IN=/dev/null
 GATEWAY_ACTION="-j RETURN"
 GATEWAY6_ACTION="-j RETURN"
-while getopts 4:6:m:k:d:b:i:a:A: opt
+while getopts 4:6:sm:k:d:b:i:a:A: opt
 do
     case $opt in
         4)
@@ -46,6 +46,9 @@ do
             ;;
         6)
             PREFIX="$OPTARG"
+            ;;
+        s)
+            PREFIX_AS_ADDR=1
             ;;
         m)
             if [[ "$OPTARG" == *.* ]]; then
@@ -228,6 +231,9 @@ if [ "$PREFIX" ]; then
         run_prog genext2fs -b 1440 "$RDISCD_IMG_FILE"
         echo "::$("$UTILS/exp6" "$IP6ADDR" 16 8)" | run_prog e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id"
         echo 64 | run_prog e2cp -P 400 - "$RDISCD_IMG_FILE:interface-id-len"
+    elif [ -n "$PREFIX_AS_ADDR" ]; then
+        # Use the prefix as the address
+        IP6ADDR="$("$UTILS/exp6" "${PREFIX%/*}")"
     else
         # Assume guest uses EUI-64.
         IP6ADDR="$("$UTILS/exp6" "$PREFIX" 8):$("$UTILS/eui-64" "$MACADDR")"
@@ -525,11 +531,8 @@ untap; tap
 args=("${@//_rdiscd_img_file_/$RDISCD_IMG_FILE}")
 
 case "$COMMAND" in
-    kvm)
-        run_prog kvm -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "${args[@]}"
-        ;;
-    capstan)
-        run_prog capstan run -n tap -b "$TAP_IFNAME" --mac "$MACADDR" "${args[@]}"
+    kvm|qemu-system-*)
+        run_prog "$COMMAND" -netdev "tap,id=hn0,ifname=$TAP_IFNAME,script=no,downscript=no" -device "virtio-net-pci,netdev=hn0,id=nic1,mac=$MACADDR" "${args[@]}"
         ;;
     *)
         echo "Unknown fold command '$COMMAND'" >&2
