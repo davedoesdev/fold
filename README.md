@@ -143,3 +143,9 @@ Run a Ubuntu VM on the Weave network, with IPv4 and IPv6 unicast and multicast a
 ```shell
 fold -4 10.0.1.100/24 -6 fde5:824d:d315:3bb1::/64 -k keyfile -m 239.1.2.3 -b test-binding 52:54:00:12:34:56 kvm -hda ubuntu.qcow2 -fda _rdiscd_img_file_
 ```
+
+Run a Rumprun kernel on a Weave network (10.9.200.1/16):
+
+```shell
+fold -4 10.9.200.1/16 52:54:00:12:34:56 kvm -kernel rumprun-packages/nodejs/build-4.3.0/out/Release/node-hello-world.bin -append '{"net": {"if": "vioif0",, "type": "inet",, "method":"dhcp"},, "cmdline": "node"}' -m 256
+```
