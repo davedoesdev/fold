@@ -1,5 +1,7 @@
 # Fold
 
+**Note: I'm no longer maintaining this project. Let me know if you wish to contribute.**
+
 Run virtual machines on a virtual network created by [Weave](https://github.com/zettio/weave).
 
 - Requires Weave (of course).
